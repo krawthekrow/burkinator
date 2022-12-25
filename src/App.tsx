@@ -2,121 +2,97 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useImmer } from 'use-immer';
 import { Wrapper, Status } from "@googlemaps/react-wrapper";
 import './App.css'
-import { createGMapsComponent } from './GMapsComponents'
+import { GeomObjUpd } from './GeomObj';
+import MapView, { MapObjSpec } from './MapView';
+import ObjsEditorView, { GeomObjSpec } from './ObjsEditorView';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
-type MapObjectSpecBase = {
-	name: string;
-};
-
-type MarkerSpec = MapObjectSpecBase & {
-	t: 'marker';
-	pos: LatLngLiteral;
-};
-
-type PolylineSpec = MapObjectSpecBase & {
-	t: 'polyline';
-	path: LatLngLiteral[];
-};
-
-type MapObjectSpec =
-	MarkerSpec |
-	PolylineSpec
-;
-
-const MapView = (
-	{objs, handleClick}: {
-		objs: MapObjectSpec[],
-		handleClick: any,
-	}
-): JSX.Element => {
-	const Marker = createGMapsComponent(google.maps.Marker);
-	const Polyline = createGMapsComponent(google.maps.Polyline);
-
-	const divRef = useRef<HTMLDivElement>(null);
-	const [map, setMap] = useState<google.maps.Map>();
-
-	useEffect(() => {
-		if (divRef.current && !map) {
-			setMap(new google.maps.Map(divRef.current, {}));
-		}
-	}, [divRef, map]);
-
-	useEffect(() => {
-		if (map) {
-			map.setOptions({
-				center: new google.maps.LatLng(-25.344, 131.031 ),
-				zoom: 4,
-			});
-
-			map.addListener('click', (e) => {
-				handleClick(e.latLng);
-			});
-		}
-	}, [map]);
-
-	const domObjs = objs.map((obj) => {
-		switch (obj.t) {
-			case 'marker': {
-				return <Marker
-					map={map}
-					key={obj.name}
-					opts={{
-						position: obj.pos,
-					}}
-				/>;
+const geomObjsToMapObjs = (
+	geomObjs: GeomObjSpec[]
+): MapObjSpec[] => {
+	const mapObjs: MapObjSpec[] = [];
+	for (const geomObj of geomObjs) {
+		switch(geomObj.t) {
+			case 'point': {
+				mapObjs.push({
+					t: 'dragMarker',
+					uniqName: geomObj.uniqName,
+					geomObjName: geomObj.uniqName,
+					pos: geomObj.pos,
+				});
+				break;
 			}
-			case 'polyline': {
-				return <Polyline
-					map={map}
-					key={obj.name}
-					opts={{
-						path: obj.path,
-						geodesic: true,
-						strokeColor: '#FF0000',
-						strokeOpacity: 1.0,
-						strokeWeight: 2,
-					}}
-				/>;
+			case 'geodesic': {
+				break;
 			}
 			default: {
-				throw new Error('unrecognized map object type');
+				throw new Error('unrecognized geom object type');
 			}
 		}
-	});
-
-	return <div>
-		<div ref={divRef} className="map" />
-		{domObjs}
-	</div>;
+	}
+	return mapObjs;
 };
 
 type AppState = {
-	mapObjs: MapObjectSpec[];
+	geomObjs: GeomObjSpec[];
+	mapObjs: MapObjSpec[];
+	lastUsedId: number;
+	mapCenter: LatLngLiteral;
 };
 
 const App = () => {
-	const initObjs: MapObjectSpec[] = [
+	const initObjs: GeomObjSpec[] = [
 		{
-			t: 'marker',
-			name: 'm1',
+			t: 'point',
+			uniqName: 'm1',
 			pos: {lat: -25.344, lng: 131.031},
 		},
-		{
-			t: 'polyline',
-			name: 'p1',
-			path: [
-				{ lat: 37.772, lng: -122.214 },
-				{ lat: 21.291, lng: -157.821 },
-				{ lat: -18.142, lng: 178.431 },
-				{ lat: -27.467, lng: 153.027 },
-			],
-		}
 	];
 	const [appState, setAppState] = useImmer<AppState>({
-		mapObjs: initObjs,
+		geomObjs: initObjs,
+		mapObjs: geomObjsToMapObjs(initObjs),
+		// last used id to assign each object a unique default name
+		lastUsedId: 0,
+		mapCenter: {lat: -25.344, lng: 131.031},
 	});
+
+	const syncObjs = (draftAppState: AppState): void => {
+		draftAppState.mapObjs = geomObjsToMapObjs(draftAppState.geomObjs);
+	};
+
+	const updateGeomObj = (
+		draftAppState: AppState,
+		upd: GeomObjUpd
+	): void => {
+		if (upd.t == 'delete') {
+			draftAppState.geomObjs = draftAppState.geomObjs.filter((geomObj) => {
+				return geomObj.uniqName != upd.uniqName;
+			});
+			return;
+		}
+
+		const targetObj = draftAppState.geomObjs.find((geomObj) => {
+			return geomObj.uniqName == upd.uniqName;
+		});
+
+		if (!targetObj) {
+			throw new Error(`could not find geom obj with name ${upd.uniqName}`);
+		}
+
+		switch (upd.t) {
+			case 'point': {
+				if (targetObj.t != 'point') {
+					throw new Error('cannot apply point transform to non-point geom obj');
+				}
+				targetObj.pos = upd.pos;
+				break;
+			}
+			default: {
+				throw new Error('unrecognized geom obj upd type');
+			}
+		}
+	};
 
 	const renderErr = (status: Status) => {
 		return <h2>{status}</h2>;
@@ -124,12 +100,68 @@ const App = () => {
 
 	const handleMapClick = (pos: LatLngLiteral) => {
 		setAppState((draftAppState) => {
-			const mapObjs = draftAppState.mapObjs;
-			mapObjs.push({
-				t: 'marker',
-				name: `m${mapObjs.length}`,
-				pos: pos,
+			const geomObjs = draftAppState.geomObjs;
+			geomObjs.push({
+				t: 'point',
+				uniqName: `obj${draftAppState.lastUsedId}`,
+				pos: {lat: pos.lat, lng: pos.lng},
 			});
+			draftAppState.lastUsedId++;
+			syncObjs(draftAppState);
+		});
+	};
+
+	const updateMarkerPos = (
+		draftAppState: AppState,
+		markerName: string,
+		geomObjName: string,
+		pos: LatLngLiteral
+	) => {
+		updateGeomObj(draftAppState, {
+			t: 'point',
+			uniqName: geomObjName,
+			pos: pos,
+		});
+
+		const marker = draftAppState.mapObjs.find((mapObj) => {
+			return mapObj.uniqName == markerName;
+		});
+		if (!marker) {
+			throw new Error(`could not find marker with name ${markerName}`);
+		}
+		if (marker.t != 'dragMarker') {
+			throw new Error(`expected dragMarker, got ${marker.t}`);
+		}
+		marker.pos = pos;
+	};
+
+	const handleMarkerDrag = (
+		markerName: string,
+		geomObjName: string,
+		pos: LatLngLiteral
+	) => {
+		setAppState((draftAppState) => {
+			updateMarkerPos(draftAppState, markerName, geomObjName, pos);
+		});
+	};
+
+	const handleMarkerDragEnd = (
+		markerName: string,
+		geomObjName: string,
+		pos: LatLngLiteral
+	) => {
+		setAppState((draftAppState) => {
+			updateMarkerPos(draftAppState, markerName, geomObjName, pos);
+			syncObjs(draftAppState);
+		});
+	};
+
+	const handleEditorUpdate = (
+		upd: GeomObjUpd
+	) => {
+		setAppState((draftAppState) => {
+			updateGeomObj(draftAppState, upd);
+			syncObjs(draftAppState);
 		});
 	};
 
@@ -137,10 +169,23 @@ const App = () => {
 		apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
 		render={renderErr}
 	>
-		<MapView
-			objs={appState.mapObjs}
-			handleClick={handleMapClick}
-		/>
+		<div className="main-pane">
+			<div className="map-pane">
+				<MapView
+					objs={appState.mapObjs}
+					center={appState.mapCenter}
+					onClick={handleMapClick}
+					onMarkerDrag={handleMarkerDrag}
+					onMarkerDragEnd={handleMarkerDragEnd}
+				/>
+			</div>
+			<div className="objs-editor-pane">
+				<ObjsEditorView
+					objs={appState.geomObjs}
+					onUpdate={handleEditorUpdate}
+				/>
+			</div>
+		</div>
 	</Wrapper>;
 };
 

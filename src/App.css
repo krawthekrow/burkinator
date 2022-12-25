@@ -1,11 +1,28 @@
 #root {
-  max-width: 1280px;
 	width: 100%;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+	margin: 0 auto;
+	padding: 2rem;
+	text-align: center;
 }
 
 .map {
 	height: 30rem;
+}
+
+.main-pane {
+	display: flex;
+}
+
+.map-pane {
+	flex: 2;
+}
+
+.objs-editor-pane {
+	flex: 1;
+	text-align: left;
+	padding: 0 2rem;
+}
+
+.coord-input {
+	width: 2.5rem;
 }
