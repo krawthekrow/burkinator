@@ -11,8 +11,10 @@
   "dependencies": {
     "@googlemaps/react-wrapper": "^1.1.35",
     "@types/googlemaps": "^3.43.3",
+    "immer": "^9.0.16",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "use-immer": "^0.8.1"
   },
   "devDependencies": {
     "@types/react": "^18.0.26",

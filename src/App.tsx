@@ -1,7 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { useImmer } from 'use-immer';
 import { Wrapper, Status } from "@googlemaps/react-wrapper";
 import './App.css'
 import { createGMapsComponent } from './GMapsComponents'
+
+import LatLngLiteral = google.maps.LatLngLiteral;
 
 type MapObjectSpecBase = {
 	name: string;
@@ -9,12 +12,12 @@ type MapObjectSpecBase = {
 
 type MarkerSpec = MapObjectSpecBase & {
 	t: 'marker';
-	pos: google.maps.LatLngLiteral;
+	pos: LatLngLiteral;
 };
 
 type PolylineSpec = MapObjectSpecBase & {
 	t: 'polyline';
-	path: google.maps.LatLngLiteral[];
+	path: LatLngLiteral[];
 };
 
 type MapObjectSpec =
@@ -22,7 +25,12 @@ type MapObjectSpec =
 	PolylineSpec
 ;
 
-const MapView = ({objs}: {objs: MapObjectSpec[]}): JSX.Element => {
+const MapView = (
+	{objs, handleClick}: {
+		objs: MapObjectSpec[],
+		handleClick: any,
+	}
+): JSX.Element => {
 	const Marker = createGMapsComponent(google.maps.Marker);
 	const Polyline = createGMapsComponent(google.maps.Polyline);
 
@@ -40,6 +48,10 @@ const MapView = ({objs}: {objs: MapObjectSpec[]}): JSX.Element => {
 			map.setOptions({
 				center: new google.maps.LatLng(-25.344, 131.031 ),
 				zoom: 4,
+			});
+
+			map.addListener('click', (e) => {
+				handleClick(e.latLng);
 			});
 		}
 	}, [map]);
@@ -80,12 +92,12 @@ const MapView = ({objs}: {objs: MapObjectSpec[]}): JSX.Element => {
 	</div>;
 };
 
-const App = () => {
-	const render = (status: Status) => {
-		return <h2>{status}</h2>;
-	};
+type AppState = {
+	mapObjs: MapObjectSpec[];
+};
 
-	const objs: MapObjectSpec[] = [
+const App = () => {
+	const initObjs: MapObjectSpec[] = [
 		{
 			t: 'marker',
 			name: 'm1',
@@ -102,12 +114,33 @@ const App = () => {
 			],
 		}
 	];
+	const [appState, setAppState] = useImmer<AppState>({
+		mapObjs: initObjs,
+	});
+
+	const renderErr = (status: Status) => {
+		return <h2>{status}</h2>;
+	};
+
+	const handleMapClick = (pos: LatLngLiteral) => {
+		setAppState((draftAppState) => {
+			const mapObjs = draftAppState.mapObjs;
+			mapObjs.push({
+				t: 'marker',
+				name: `m${mapObjs.length}`,
+				pos: pos,
+			});
+		});
+	};
 
 	return <Wrapper
 		apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
-		render={render}
+		render={renderErr}
 	>
-		<MapView objs={objs} />
+		<MapView
+			objs={appState.mapObjs}
+			handleClick={handleMapClick}
+		/>
 	</Wrapper>;
 };
 
