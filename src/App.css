@@ -1,28 +1,54 @@
 #root {
 	width: 100%;
+	height: 100%;
 	margin: 0 auto;
-	padding: 2rem;
+	padding: 0.5rem;
 	text-align: center;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
 }
 
 .map {
-	height: 30rem;
+	height: 100%;
 }
 
 .main-pane {
 	display: flex;
+	align-items: stretch;
+	height: 100%;
 }
 
 .map-pane {
 	flex: 2;
 }
 
+.map-pane-inner {
+	height: 100%;
+}
+
 .objs-editor-pane {
 	flex: 1;
 	text-align: left;
-	padding: 0 2rem;
+	padding: 0 0.5rem;
+	overflow: scroll;
 }
 
 .coord-input {
 	width: 2.5rem;
+}
+
+.name-input {
+	max-width: 6rem;
+}
+
+.obj-editor {
+	border: 1px solid #555;
+	padding: 0.3rem 0.5rem;
+	margin-bottom: 0.3rem;
+}
+
+.toolbar-pane {
+	text-align: left;
+	margin-bottom: 0.3rem;
 }

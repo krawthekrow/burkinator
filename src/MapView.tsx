@@ -1,21 +1,20 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Marker, Polyline } from './GMapsComponents';
+import { assertUnhandledType } from './Misc';
+import { flattenLatLng } from './Misc';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 import LatLng = google.maps.LatLng;
 
-const flattenLatLng = (pos: LatLng) => {
-	return { lat: pos.lat(), lng: pos.lng() };
-}
-
 type MapObjSpecBase = {
 	uniqName: string;
+	geomObjName: string;
 };
 
 type MapDragMarkerSpec = MapObjSpecBase & {
 	t: 'dragMarker';
-	geomObjName: string;
 	pos: LatLngLiteral;
+	mapLabel: string;
 };
 
 type MapPolylineSpec = MapObjSpecBase & {
@@ -29,9 +28,10 @@ type MapObjSpec =
 ;
 
 const MapView = (
-	{objs, center, onClick, onMarkerDrag, onMarkerDragEnd}: {
+	{objs, center, zoom, onClick, onMarkerDrag, onMarkerDragEnd}: {
 		objs: MapObjSpec[],
 		center: LatLngLiteral,
+		zoom: number,
 		onClick: (pos: LatLngLiteral) => void,
 		onMarkerDrag: (
 			markerName: string,
@@ -70,10 +70,10 @@ const MapView = (
 		if (map) {
 			map.setOptions({
 				center: center,
-				zoom: 4,
+				zoom: zoom,
 			});
 		}
-	}, [map, center.lat, center.lng]);
+	}, [map, center.lat, center.lng, zoom]);
 
 	const domObjs = objs.map((obj) => {
 		switch (obj.t) {
@@ -90,6 +90,9 @@ const MapView = (
 					opts={{
 						position: obj.pos,
 						draggable: true,
+						label: {
+							text: obj.mapLabel,
+						},
 					}}
 					onDrag={handleDrag}
 					onDragEnd={handleDragEnd}
@@ -109,12 +112,12 @@ const MapView = (
 				/>;
 			}
 			default: {
-				throw new Error('unrecognized map object type');
+				assertUnhandledType(obj);
 			}
 		}
 	});
 
-	return <div>
+	return <div className="map-pane-inner">
 		<div ref={divRef} className="map" />
 		{domObjs}
 	</div>;

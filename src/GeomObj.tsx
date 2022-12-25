@@ -8,11 +8,14 @@ type GeomObjSpecBase = {
 
 type GeomPointSpec = GeomObjSpecBase & {
 	t: 'point';
+	mapLabel: string; // label to show on the map
 	pos: LatLngLiteral;
 };
 
 type GeomGeodesicSpec = GeomObjSpecBase & {
 	t: 'geodesic';
+	ptFrom: string | null;
+	ptTo: string | null;
 };
 
 type GeomObjSpec =
@@ -21,32 +24,8 @@ type GeomObjSpec =
 ;
 
 
-// Types used to describe an update to a geometric object.
-
-type GeomObjUpdBase = {
-	uniqName: string;
-};
-
-type GeomObjUpdPoint = GeomObjUpdBase & {
-	t: 'point';
-	pos: LatLngLiteral;
-};
-
-type GeomObjUpdDelete = GeomObjUpdBase & {
-	t: 'delete';
-};
-
-type GeomObjUpd =
-	GeomObjUpdPoint |
-	GeomObjUpdDelete
-;
-
-
 export type {
 	GeomGeodesicSpec,
 	GeomPointSpec,
 	GeomObjSpec,
-	GeomObjUpdPoint,
-	GeomObjUpdDelete,
-	GeomObjUpd,
 };
