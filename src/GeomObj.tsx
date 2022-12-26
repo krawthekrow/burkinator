@@ -1,9 +1,16 @@
 import LatLngLiteral = google.maps.LatLngLiteral;
 
+enum GeomObjNameBrand { _ = '' };
+type GeomObjName = GeomObjNameBrand & string;
+
+const newGeomObjName = (uniqName: string): GeomObjName => {
+	return uniqName as GeomObjName;
+};
+
 // Types used to describe geometric objects on the Earth's surface.
 
 type GeomObjSpecBase = {
-	uniqName: string;
+	uniqName: GeomObjName;
 };
 
 type GeomPointSpec = GeomObjSpecBase & {
@@ -25,7 +32,9 @@ type GeomObjSpec =
 
 
 export type {
+	GeomObjName,
 	GeomGeodesicSpec,
 	GeomPointSpec,
 	GeomObjSpec,
 };
+export { newGeomObjName };

@@ -1,3 +1,5 @@
+import { GeomObjName } from './GeomObj';
+
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 type NewPointUpd = {
@@ -11,18 +13,18 @@ type NewGeodesicUpd = {
 
 type DeleteObjUpd = {
 	t: 'delete';
-	uniqName: string;
+	uniqName: GeomObjName;
 };
 
 // Types used to describe an update to a geometric object.
 
 type AlterUpdBase = {
-	uniqName: string;
+	uniqName: GeomObjName;
 };
 
 type AlterNameUpd = AlterUpdBase & {
 	t: 'name';
-	newName: string;
+	newName: GeomObjName;
 };
 
 type AlterPosUpd = AlterUpdBase & {
@@ -36,7 +38,7 @@ type AlterMapLabelUpd = AlterUpdBase & {
 };
 
 type AlterPtRefUpdBase = AlterUpdBase & {
-	newPtRef: string;
+	newPtRef: GeomObjName;
 };
 
 type AlterGeodesicFromUpd = AlterPtRefUpdBase & {

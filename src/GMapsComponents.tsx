@@ -4,12 +4,61 @@ import { flattenLatLng } from './Misc';
 import LatLngLiteral = google.maps.LatLngLiteral;
 import LatLng = google.maps.LatLng;
 
+const GMap = (
+	{center, zoom, onMapInit, onClick}: {
+		center: LatLngLiteral,
+		zoom: number,
+		onMapInit: (map: google.maps.Map) => void,
+		onClick: (pos: LatLngLiteral) => void,
+	}
+) => {
+	const divRef = useRef<HTMLDivElement>(null);
+	const [map, setMap] = useState<google.maps.Map>();
+
+	useEffect(() => {
+		if (divRef.current && !map) {
+			setMap(new google.maps.Map(divRef.current, {}));
+		}
+	}, [divRef, map]);
+
+	useEffect(() => {
+		if (map) {
+			const clickListener = map.addListener('click', (e) => {
+				onClick(flattenLatLng(e.latLng));
+			});
+
+			return () => {
+				google.maps.event.removeListener(clickListener);
+			};
+		}
+	}, [map]);
+
+	useEffect(() => {
+		if (map) {
+			map.setOptions({
+				center: center,
+				zoom: zoom,
+			});
+		}
+	}, [map, center.lat, center.lng, zoom]);
+
+	useEffect(() => {
+		if (map) {
+			onMapInit(map);
+		}
+	}, [map]);
+
+	return <div ref={divRef} className="map" />;
+};
+
 const Marker = (
-	{map, opts, onDrag, onDragEnd}: {
+	{map, opts, onDrag, onDragEnd, onClick, onRightClick}: {
 		map?: google.maps.Map,
 		opts: google.maps.MarkerOptions,
 		onDrag?: (pos: LatLngLiteral) => void,
 		onDragEnd?: (pos: LatLngLiteral) => void,
+		onClick?: () => void,
+		onRightClick?: () => void,
 	}
 ) => {
 	const [marker, setMarker] = React.useState<google.maps.Marker>();
@@ -41,12 +90,24 @@ const Marker = (
 				onDragEnd(flattenLatLng(e.latLng));
 			}
 		});
+		const clickListener = marker.addListener('click', (e) => {
+			if (onClick) {
+				onClick();
+			}
+		});
+		const rightClickListener = marker.addListener('contextmenu', (e) => {
+			if (onRightClick) {
+				onRightClick();
+			}
+		});
 
 		return () => {
 			google.maps.event.removeListener(dragListener);
 			google.maps.event.removeListener(dragEndListener);
+			google.maps.event.removeListener(clickListener);
+			google.maps.event.removeListener(rightClickListener);
 		};
-	}, [marker, onDrag, onDragEnd]);
+	}, [marker, onDrag, onDragEnd, onClick, onRightClick]);
 
 	useEffect(() => {
 		if (marker) {
@@ -98,4 +159,4 @@ const Polyline = (
 	return null;
 };
 
-export { Marker, Polyline };
+export { GMap, Marker, Polyline };

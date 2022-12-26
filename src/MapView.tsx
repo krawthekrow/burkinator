@@ -1,79 +1,47 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Marker, Polyline } from './GMapsComponents';
+import { GMap, Marker, Polyline } from './GMapsComponents';
 import { assertUnhandledType } from './Misc';
 import { flattenLatLng } from './Misc';
+import { MapObjName, MapObjSpec } from './MapObj';
+import { GeomObjName } from './GeomObj';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
-import LatLng = google.maps.LatLng;
-
-type MapObjSpecBase = {
-	uniqName: string;
-	geomObjName: string;
-};
-
-type MapDragMarkerSpec = MapObjSpecBase & {
-	t: 'dragMarker';
-	pos: LatLngLiteral;
-	mapLabel: string;
-};
-
-type MapPolylineSpec = MapObjSpecBase & {
-	t: 'polyline';
-	path: LatLngLiteral[];
-};
-
-type MapObjSpec =
-	MapDragMarkerSpec |
-	MapPolylineSpec
-;
 
 const MapView = (
-	{objs, center, zoom, onClick, onMarkerDrag, onMarkerDragEnd}: {
+	{
+		objs,
+		center, zoom,
+		markersDraggable,
+		onMapClick,
+		onMarkerDrag, onMarkerDragEnd,
+		onMarkerClick, onMarkerRightClick,
+	}: {
 		objs: MapObjSpec[],
 		center: LatLngLiteral,
 		zoom: number,
-		onClick: (pos: LatLngLiteral) => void,
+		markersDraggable: boolean,
+		onMapClick: (pos: LatLngLiteral) => void,
 		onMarkerDrag: (
-			markerName: string,
-			geomObjName: string,
+			markerName: MapObjName,
+			geomObjName: GeomObjName,
 			pos: LatLngLiteral
 		) => void,
 		onMarkerDragEnd: (
-			markerName: string,
-			geomObjName: string,
+			markerName: MapObjName,
+			geomObjName: GeomObjName,
 			pos: LatLngLiteral
+		) => void,
+		onMarkerClick: (
+			markerName: MapObjName,
+			geomObjName: GeomObjName,
+		) => void,
+		onMarkerRightClick: (
+			markerName: MapObjName,
+			geomObjName: GeomObjName,
 		) => void,
 	}
 ): JSX.Element => {
-	const divRef = useRef<HTMLDivElement>(null);
 	const [map, setMap] = useState<google.maps.Map>();
-
-	useEffect(() => {
-		if (divRef.current && !map) {
-			setMap(new google.maps.Map(divRef.current, {}));
-		}
-	}, [divRef, map]);
-
-	useEffect(() => {
-		if (map) {
-			const clickListener = map.addListener('click', (e) => {
-				onClick(flattenLatLng(e.latLng));
-			});
-
-			return () => {
-				google.maps.event.removeListener(clickListener);
-			};
-		}
-	}, [map]);
-
-	useEffect(() => {
-		if (map) {
-			map.setOptions({
-				center: center,
-				zoom: zoom,
-			});
-		}
-	}, [map, center.lat, center.lng, zoom]);
 
 	const domObjs = objs.map((obj) => {
 		switch (obj.t) {
@@ -84,18 +52,26 @@ const MapView = (
 				const handleDragEnd = (pos: LatLngLiteral) => {
 					onMarkerDragEnd(obj.uniqName, obj.geomObjName, pos);
 				};
+				const handleClick = () => {
+					onMarkerClick(obj.uniqName, obj.geomObjName);
+				};
+				const handleRightClick = () => {
+					onMarkerRightClick(obj.uniqName, obj.geomObjName);
+				};
 				return <Marker
 					map={map}
 					key={obj.uniqName}
 					opts={{
 						position: obj.pos,
-						draggable: true,
+						draggable: markersDraggable,
 						label: {
 							text: obj.mapLabel,
 						},
 					}}
 					onDrag={handleDrag}
 					onDragEnd={handleDragEnd}
+					onClick={handleClick}
+					onRightClick={handleRightClick}
 				/>;
 			}
 			case 'polyline': {
@@ -117,8 +93,17 @@ const MapView = (
 		}
 	});
 
+	const handleMapInit = (map: google.maps.Map) => {
+		setMap(map);
+	};
+
 	return <div className="map-pane-inner">
-		<div ref={divRef} className="map" />
+		<GMap
+			center={center}
+			zoom={zoom}
+			onMapInit={handleMapInit}
+			onClick={onMapClick}
+		/>
 		{domObjs}
 	</div>;
 };

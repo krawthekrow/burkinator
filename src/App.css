@@ -21,6 +21,7 @@
 
 .map-pane {
 	flex: 2;
+	position: relative;
 }
 
 .map-pane-inner {
@@ -51,4 +52,25 @@
 .toolbar-pane {
 	text-align: left;
 	margin-bottom: 0.3rem;
+}
+
+.toolbar-button {
+	border-radius: 4px;
+	padding: 0.25rem 0.5rem 0.1rem 0.5rem;
+}
+
+.shortcut-button {
+	border-radius: 4px;
+	background-color: #123;
+	border-color: #245;
+	padding: 0.2rem 0.3rem 0rem 0.3rem;
+}
+
+.error-pane {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 2;
+	background-color: #812;
+	padding: 0.3rem 0.4rem 0px 0.4rem;
 }

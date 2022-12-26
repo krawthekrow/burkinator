@@ -1,7 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { assertUnhandledType } from './Misc';
+import { UserState } from './UserState';
 import {
-	GeomPointSpec, GeomGeodesicSpec, GeomObjSpec,
+	GeomPointSpec, newGeomObjName,
+	GeomGeodesicSpec, GeomObjSpec,
 } from './GeomObj';
 import {
 	AlterNameUpd, AlterPosUpd, AlterMapLabelUpd,
@@ -14,8 +16,9 @@ import LatLngLiteral = google.maps.LatLngLiteral;
 
 // Only send updates when the user "commits" by unfocusing
 const ReactiveInput = (
-	{val, inputClass, onCommit}: {
+	{val, disabled, inputClass, onCommit}: {
 		val: string,
+		disabled: boolean,
 		inputClass: string,
 		onCommit: (newVal: string) => void,
 	}
@@ -49,6 +52,7 @@ const ReactiveInput = (
 		type="text"
 		className={`${inputClass}`}
 		value={(dispVal != null) ? dispVal : val}
+		disabled={disabled}
 		onChange={handleChange}
 		onFocus={handleFocus}
 		onBlur={handleBlur}
@@ -57,7 +61,8 @@ const ReactiveInput = (
 };
 
 const PointEditorView = (
-	{obj, onUpdate}: {
+	{userState, obj, onUpdate}: {
+		userState: UserState,
 		obj: GeomPointSpec,
 		onUpdate: (upd: AlterUpd) => void,
 	}
@@ -95,12 +100,14 @@ const PointEditorView = (
 			Lat:&nbsp;
 			<ReactiveInput
 				val={obj.pos.lat.toString()}
+				disabled={userState.t != 'free'}
 				inputClass="coord-input"
 				onCommit={handleCommitLat}
 			/>,
 			Lng:&nbsp;
 			<ReactiveInput
 				val={obj.pos.lng.toString()}
+				disabled={userState.t != 'free'}
 				inputClass="coord-input"
 				onCommit={handleCommitLng}
 			/>
@@ -109,6 +116,7 @@ const PointEditorView = (
 			Label:&nbsp;
 			<ReactiveInput
 				val={obj.mapLabel}
+				disabled={userState.t != 'free'}
 				inputClass="name-input"
 				onCommit={handleCommitMapLabel}
 			/>
@@ -117,16 +125,18 @@ const PointEditorView = (
 };
 
 const GeodesicEditorView = (
-	{obj, onUpdate}: {
+	{userState, obj, onUpdate, onUserStateUpdate}: {
+		userState: UserState,
 		obj: GeomGeodesicSpec,
 		onUpdate: (upd: AlterUpd) => void,
+		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
 	const handleCommitPtFrom = (newVal: string) => {
 		onUpdate({
 			t: 'geodesicFrom',
 			uniqName: obj.uniqName,
-			newPtRef: newVal,
+			newPtRef: newGeomObjName(newVal),
 		});
 	};
 
@@ -134,7 +144,26 @@ const GeodesicEditorView = (
 		onUpdate({
 			t: 'geodesicTo',
 			uniqName: obj.uniqName,
-			newPtRef: newVal,
+			newPtRef: newGeomObjName(newVal),
+		});
+	};
+
+	const handleSelectFromClick = (
+		e: React.MouseEvent<HTMLButtonElement>
+	) => {
+		onUserStateUpdate({
+			t: 'geodesicFrom',
+			uniqName: obj.uniqName,
+			doPtToNext: false,
+		});
+	};
+
+	const handleSelectToClick = (
+		e: React.MouseEvent<HTMLButtonElement>
+	) => {
+		onUserStateUpdate({
+			t: 'geodesicTo',
+			uniqName: obj.uniqName,
 		});
 	};
 
@@ -143,37 +172,58 @@ const GeodesicEditorView = (
 			From:&nbsp;
 			<ReactiveInput
 				val={(obj.ptFrom != null) ? obj.ptFrom : ''}
+				disabled={userState.t != 'free'}
 				inputClass="name-input"
 				onCommit={handleCommitPtFrom}
-			/>,
+			/>
+			&nbsp;
+			<button
+				className="shortcut-button"
+				onClick={handleSelectFromClick}
+			>
+				S
+			</button>,
 			To:&nbsp;
 			<ReactiveInput
 				val={(obj.ptTo != null) ? obj.ptTo : ''}
+				disabled={userState.t != 'free'}
 				inputClass="name-input"
 				onCommit={handleCommitPtTo}
 			/>
+			&nbsp;
+			<button
+				className="shortcut-button"
+				onClick={handleSelectToClick}
+			>
+				S
+			</button>,
 		</div>
 	</div>;
 };
 
 const ObjEditorView = (
-	{obj, onUpdate}: {
+	{userState, obj, onUpdate, onUserStateUpdate}: {
+		userState: UserState,
 		obj: GeomObjSpec,
 		onUpdate: (upd: AlterUpd) => void,
+		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
 	const getInnerEditor = () => {
 		switch (obj.t) {
 			case 'point': {
 				return <PointEditorView
+					userState={userState}
 					obj={obj}
 					onUpdate={onUpdate}
 				/>;
 			}
 			case 'geodesic': {
 				return <GeodesicEditorView
+					userState={userState}
 					obj={obj}
 					onUpdate={onUpdate}
+					onUserStateUpdate={onUserStateUpdate}
 				/>;
 			}
 			default: {
@@ -186,7 +236,7 @@ const ObjEditorView = (
 		onUpdate({
 			t: 'name',
 			uniqName: obj.uniqName,
-			newName: newVal,
+			newName: newGeomObjName(newVal),
 		});
 	};
 
@@ -195,6 +245,7 @@ const ObjEditorView = (
 	>
 		<ReactiveInput
 			val={obj.uniqName}
+			disabled={userState.t != 'free'}
 			inputClass="name-input"
 			onCommit={handleCommitName}
 		/>
@@ -203,16 +254,20 @@ const ObjEditorView = (
 };
 
 const ObjsEditorView = (
-	{objs, onUpdate}: {
+	{userState, objs, onUpdate, onUserStateUpdate}: {
+		userState: UserState,
 		objs: GeomObjSpec[],
 		onUpdate: (upd: AlterUpd) => void,
+		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
 	const domObjs = objs.map((obj) => {
 		return <ObjEditorView
 			key={obj.uniqName}
+			userState={userState}
 			obj={obj}
 			onUpdate={onUpdate}
+			onUserStateUpdate={onUserStateUpdate}
 		/>;
 	});
 
