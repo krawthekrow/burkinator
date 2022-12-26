@@ -66,6 +66,11 @@
 	padding: 0.2rem 0.3rem 0rem 0.3rem;
 }
 
+.del-shortcut-button {
+	background-color: #421;
+	border-color: #523;
+}
+
 .error-pane {
 	position: absolute;
 	top: 0;

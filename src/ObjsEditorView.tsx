@@ -5,12 +5,7 @@ import {
 	GeomPointSpec, newGeomObjName,
 	GeomGeodesicSpec, GeomObjSpec,
 } from './GeomObj';
-import {
-	AlterNameUpd, AlterPosUpd, AlterMapLabelUpd,
-	AlterGeodesicFromUpd, AlterGeodesicToUpd,
-	AlterUpd,
-	DeleteObjUpd,
-} from './StateUpd';
+import { StateUpd } from './StateUpd';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
@@ -64,10 +59,10 @@ const PointEditorView = (
 	{userState, obj, onUpdate}: {
 		userState: UserState,
 		obj: GeomPointSpec,
-		onUpdate: (upd: AlterUpd) => void,
+		onUpdate: (upd: StateUpd) => void,
 	}
 ) => {
-	const makeUpdatePos = (pos: LatLngLiteral): AlterUpd => {
+	const makeUpdatePos = (pos: LatLngLiteral): StateUpd => {
 		return {
 			t: 'pos',
 			uniqName: obj.uniqName,
@@ -128,7 +123,7 @@ const GeodesicEditorView = (
 	{userState, obj, onUpdate, onUserStateUpdate}: {
 		userState: UserState,
 		obj: GeomGeodesicSpec,
-		onUpdate: (upd: AlterUpd) => void,
+		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
@@ -176,8 +171,7 @@ const GeodesicEditorView = (
 				inputClass="name-input"
 				onCommit={handleCommitPtFrom}
 			/>
-			&nbsp;
-			<button
+			&nbsp;<button
 				className="shortcut-button"
 				onClick={handleSelectFromClick}
 			>
@@ -190,8 +184,7 @@ const GeodesicEditorView = (
 				inputClass="name-input"
 				onCommit={handleCommitPtTo}
 			/>
-			&nbsp;
-			<button
+			&nbsp;<button
 				className="shortcut-button"
 				onClick={handleSelectToClick}
 			>
@@ -205,7 +198,7 @@ const ObjEditorView = (
 	{userState, obj, onUpdate, onUserStateUpdate}: {
 		userState: UserState,
 		obj: GeomObjSpec,
-		onUpdate: (upd: AlterUpd) => void,
+		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
@@ -240,15 +233,32 @@ const ObjEditorView = (
 		});
 	};
 
+	const handleDelete = () => {
+		if (confirm(`Delete ${obj.uniqName}?`)) {
+			onUpdate({
+				t: 'delete',
+				uniqName: obj.uniqName,
+			});
+		}
+	};
+
 	return <div
 		className="obj-editor"
 	>
-		<ReactiveInput
-			val={obj.uniqName}
-			disabled={userState.t != 'free'}
-			inputClass="name-input"
-			onCommit={handleCommitName}
-		/>
+		<div>
+			<ReactiveInput
+				val={obj.uniqName}
+				disabled={userState.t != 'free'}
+				inputClass="name-input"
+				onCommit={handleCommitName}
+			/>
+			&nbsp;<button
+				className="shortcut-button del-shortcut-button"
+				onClick={handleDelete}
+			>
+				X
+			</button>
+		</div>
 		{getInnerEditor()}
 	</div>;
 };
@@ -257,7 +267,7 @@ const ObjsEditorView = (
 	{userState, objs, onUpdate, onUserStateUpdate}: {
 		userState: UserState,
 		objs: GeomObjSpec[],
-		onUpdate: (upd: AlterUpd) => void,
+		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
