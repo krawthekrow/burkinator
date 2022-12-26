@@ -21,8 +21,8 @@ type GeomPointSpec = GeomObjSpecBase & {
 
 type GeomGeodesicSpec = GeomObjSpecBase & {
 	t: 'geodesic';
-	ptFrom: string | null;
-	ptTo: string | null;
+	ptFrom: GeomObjName | null;
+	ptTo: GeomObjName | null;
 };
 
 type GeomObjSpec =

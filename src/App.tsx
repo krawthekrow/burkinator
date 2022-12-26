@@ -18,7 +18,8 @@ import ObjsEditorView from './ObjsEditorView';
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 const Toolbar = (
-	{onUpdate}: {
+	{userState, onUpdate}: {
+		userState: UserState,
 		onUpdate: (upd: StateUpd) => void,
 	}
 ): JSX.Element => {
@@ -33,6 +34,7 @@ const Toolbar = (
 	return <div>
 		<button
 			className="toolbar-button"
+			disabled={userState.t != 'free'}
 			onClick={handleClickNewGeodesic}
 		>Geodesic</button>
 	</div>
@@ -44,7 +46,7 @@ const App = (): JSX.Element => {
 			t: 'point',
 			uniqName: newGeomObjName('m1'),
 			pos: {lat: -25.344, lng: 131.031},
-			mapLabel: 'M',
+			mapLabel: 'M1',
 		},
 		{
 			t: 'point',
@@ -55,8 +57,8 @@ const App = (): JSX.Element => {
 		{
 			t: 'geodesic',
 			uniqName: newGeomObjName('g1'),
-			ptFrom: 'm1',
-			ptTo: 'm2',
+			ptFrom: newGeomObjName('m1'),
+			ptTo: newGeomObjName('m2'),
 		},
 	];
 	const [appState, setAppState] = useImmer<AppState>({
@@ -197,6 +199,7 @@ const App = (): JSX.Element => {
 	>
 		<div className="toolbar-pane">
 			<Toolbar
+				userState={appState.userState}
 				onUpdate={handleUpdate}
 			/>
 		</div>

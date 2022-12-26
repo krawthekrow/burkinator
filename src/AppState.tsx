@@ -206,6 +206,33 @@ const applyAlterUpd = (
 	return true;
 };
 
+const getDependencySet = (
+	geomObjs: GeomObjSpec[],
+	uniqName: GeomObjName
+): GeomObjName[] => {
+	const depSet = [uniqName];
+	for (const geomObj of geomObjs) {
+		switch (geomObj.t) {
+			case 'geodesic': {
+				if (
+					(geomObj.ptFrom != null && depSet.includes(geomObj.ptFrom)) ||
+					(geomObj.ptTo != null && depSet.includes(geomObj.ptTo))
+				) {
+					depSet.push(geomObj.uniqName);
+				}
+				break;
+			}
+			case 'point': {
+				break;
+			}
+			default: {
+				assertUnhandledType(geomObj);
+			}
+		}
+	}
+	return depSet;
+};
+
 const applyUpd = (
 	appState: AppState,
 	upd: StateUpd,
@@ -240,9 +267,15 @@ const applyUpd = (
 			break;
 		}
 		case 'delete': {
+			const depSet = getDependencySet(appState.geomObjs, upd.uniqName);
+			if (!confirm(
+				`Delete ${depSet.join(', ')}?`
+			)) {
+				break;
+			}
 			appState.geomObjs = appState.geomObjs.filter(
 				(geomObj) => {
-					return geomObj.uniqName != upd.uniqName;
+					return !depSet.includes(geomObj.uniqName);
 				}
 			);
 			break;

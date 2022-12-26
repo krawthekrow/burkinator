@@ -173,6 +173,7 @@ const GeodesicEditorView = (
 			/>
 			&nbsp;<button
 				className="shortcut-button"
+				disabled={userState.t != 'free'}
 				onClick={handleSelectFromClick}
 			>
 				S
@@ -186,6 +187,7 @@ const GeodesicEditorView = (
 			/>
 			&nbsp;<button
 				className="shortcut-button"
+				disabled={userState.t != 'free'}
 				onClick={handleSelectToClick}
 			>
 				S
@@ -234,12 +236,10 @@ const ObjEditorView = (
 	};
 
 	const handleDelete = () => {
-		if (confirm(`Delete ${obj.uniqName}?`)) {
-			onUpdate({
-				t: 'delete',
-				uniqName: obj.uniqName,
-			});
-		}
+		onUpdate({
+			t: 'delete',
+			uniqName: obj.uniqName,
+		});
 	};
 
 	return <div
@@ -254,6 +254,7 @@ const ObjEditorView = (
 			/>
 			&nbsp;<button
 				className="shortcut-button del-shortcut-button"
+				disabled={userState.t != 'free'}
 				onClick={handleDelete}
 			>
 				X
