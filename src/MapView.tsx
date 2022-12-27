@@ -1,9 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { GMap, Marker, Polyline } from './GMapsComponents';
 import { assertUnhandledType } from './Misc';
-import { flattenLatLng } from './Misc';
 import { MapObjName, MapObjSpec } from './MapObj';
-import { GeomObjName } from './GeomObj';
+import { ResolvedGeomObjSpec } from './GeomObj';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
@@ -23,21 +22,21 @@ const MapView = (
 		onMapClick: (pos: LatLngLiteral) => void,
 		onMarkerDrag: (
 			markerName: MapObjName,
-			geomObjName: GeomObjName,
+			geomObj: ResolvedGeomObjSpec,
 			pos: LatLngLiteral
 		) => void,
 		onMarkerDragEnd: (
 			markerName: MapObjName,
-			geomObjName: GeomObjName,
+			geomObj: ResolvedGeomObjSpec,
 			pos: LatLngLiteral
 		) => void,
 		onMarkerClick: (
 			markerName: MapObjName,
-			geomObjName: GeomObjName,
+			geomObj: ResolvedGeomObjSpec,
 		) => void,
 		onMarkerRightClick: (
 			markerName: MapObjName,
-			geomObjName: GeomObjName,
+			geomObj: ResolvedGeomObjSpec,
 		) => void,
 	}
 ): JSX.Element => {
@@ -47,27 +46,28 @@ const MapView = (
 		switch (obj.t) {
 			case 'dragMarker': {
 				const handleDrag = (pos: LatLngLiteral) => {
-					onMarkerDrag(obj.uniqName, obj.geomObjName, pos);
+					onMarkerDrag(obj.uniqName, obj.geomObj, pos);
 				};
 				const handleDragEnd = (pos: LatLngLiteral) => {
-					onMarkerDragEnd(obj.uniqName, obj.geomObjName, pos);
+					onMarkerDragEnd(obj.uniqName, obj.geomObj, pos);
 				};
 				const handleClick = () => {
-					onMarkerClick(obj.uniqName, obj.geomObjName);
+					onMarkerClick(obj.uniqName, obj.geomObj);
 				};
 				const handleRightClick = () => {
-					onMarkerRightClick(obj.uniqName, obj.geomObjName);
+					onMarkerRightClick(obj.uniqName, obj.geomObj);
+				};
+				const opts = {
+					position: obj.pos,
+					draggable: markersDraggable,
+					label: (obj.mapLabel == '') ? undefined : {
+						text: obj.mapLabel,
+					},
 				};
 				return <Marker
 					map={map}
 					key={obj.uniqName}
-					opts={{
-						position: obj.pos,
-						draggable: markersDraggable,
-						label: {
-							text: obj.mapLabel,
-						},
-					}}
+					opts={opts}
 					onDrag={handleDrag}
 					onDragEnd={handleDragEnd}
 					onClick={handleClick}

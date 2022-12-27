@@ -3,13 +3,16 @@ import { useImmer } from 'use-immer';
 import { Wrapper, Status } from "@googlemaps/react-wrapper";
 import './App.css'
 import { assertUnhandledType } from './Misc';
-import { GeomObjName, GeomObjSpec, newGeomObjName } from './GeomObj';
+import { DEFAULT_EARTH_MODEL } from './EarthModel';
+import {
+	GeomObjName, GeomObjSpec, ResolvedGeomObjSpec,
+	newGeomObjName,
+} from './GeomObj';
 import { MapObjName, newMapObjName } from './MapObj';
 import { StateUpd } from './StateUpd';
 import { UserState } from './UserState';
 import {
 	AppState, AppStateReducer,
-	findGeomObjIndex,
 	geomObjsToMapObjs,
 } from './AppState';
 import MapView, { MapObjSpec } from './MapView';
@@ -31,13 +34,13 @@ const Toolbar = (
 		});
 	};
 
-	return <div>
+	return <>
 		<button
 			className="toolbar-button"
 			disabled={userState.t != 'free'}
 			onClick={handleClickNewGeodesic}
 		>Geodesic</button>
-	</div>
+	</>
 };
 
 const App = (): JSX.Element => {
@@ -57,14 +60,21 @@ const App = (): JSX.Element => {
 		{
 			t: 'geodesic',
 			uniqName: newGeomObjName('g1'),
-			ptFrom: newGeomObjName('m1'),
-			ptTo: newGeomObjName('m2'),
+			ptStart: newGeomObjName('m1'),
+			ptEnd: newGeomObjName('m2'),
+			useFarArc: false,
+			destPtEnabled: true,
+			destPtTurnAngle: 0.1,
+			destPtDist: 1000,
+			destPtMapLabel: 'G1',
 		},
 	];
+	const initEarth = DEFAULT_EARTH_MODEL;
 	const [appState, setAppState] = useImmer<AppState>({
+		earth: initEarth,
 		userState: { t: 'free' },
 		geomObjs: initObjs,
-		mapObjs: geomObjsToMapObjs(initObjs),
+		mapObjs: geomObjsToMapObjs(initEarth, initObjs),
 		// last used id to assign each object a unique default name
 		lastUsedId: 0,
 		mapCenter: {lat: -25.344, lng: 131.031},
@@ -91,47 +101,47 @@ const App = (): JSX.Element => {
 
 	const handleMarkerDrag = (
 		markerName: MapObjName,
-		geomObjName: GeomObjName,
+		geomObj: ResolvedGeomObjSpec,
 		pos: LatLngLiteral
 	) => {
 		setAppState((draftAppState) => {
 			draftAppState.errMsg = null;
 			AppStateReducer.updateMarkerPos(
-				draftAppState, markerName, geomObjName, pos
+				draftAppState, markerName, geomObj, pos
 			);
 		});
 	};
 
 	const handleMarkerDragEnd = (
 		markerName: MapObjName,
-		geomObjName: GeomObjName,
+		geomObj: ResolvedGeomObjSpec,
 		pos: LatLngLiteral
 	) => {
 		setAppState((draftAppState) => {
 			draftAppState.errMsg = null;
 			AppStateReducer.updateMarkerPos(
-				draftAppState, markerName, geomObjName, pos
+				draftAppState, markerName, geomObj, pos
 			);
 		});
 	};
 
 	const handleMarkerClick = (
 		markerName: MapObjName,
-		geomObjName: GeomObjName,
+		geomObj: ResolvedGeomObjSpec,
 	) => {
 		setAppState((draftAppState) => {
 			draftAppState.errMsg = null;
 			const userState = draftAppState.userState;
 			switch (userState.t) {
-				case 'geodesicFrom': {
+				case 'geodesicStart': {
 					const updSuccess = AppStateReducer.applyUpd(draftAppState, {
-						t: 'geodesicFrom',
+						t: 'geodesicStart',
 						uniqName: userState.uniqName,
-						newPtRef: geomObjName,
+						newPtRef: geomObj.uniqName,
 					});
 					if (updSuccess) {
-						draftAppState.userState = userState.doPtToNext ? {
-							t: 'geodesicTo',
+						draftAppState.userState = userState.doPtEndNext ? {
+							t: 'geodesicEnd',
 							uniqName: userState.uniqName,
 						} : {
 							t: 'free',
@@ -139,11 +149,11 @@ const App = (): JSX.Element => {
 					}
 					break;
 				}
-				case 'geodesicTo': {
+				case 'geodesicEnd': {
 					const updSuccess = AppStateReducer.applyUpd(draftAppState, {
-						t: 'geodesicTo',
+						t: 'geodesicEnd',
 						uniqName: userState.uniqName,
-						newPtRef: geomObjName,
+						newPtRef: geomObj.uniqName,
 					});
 					if (updSuccess) {
 						draftAppState.userState = {
@@ -158,7 +168,7 @@ const App = (): JSX.Element => {
 
 	const handleMarkerRightClick = (
 		markerName: MapObjName,
-		geomObjName: GeomObjName,
+		geomObj: ResolvedGeomObjSpec,
 	) => {
 		setAppState((draftAppState) => {
 			draftAppState.errMsg = null;
@@ -184,9 +194,35 @@ const App = (): JSX.Element => {
 		});
 	};
 
+	let instructionMsg = null;
+	switch (appState.userState.t) {
+		case 'geodesicStart': {
+			instructionMsg = 'select geodesic starting point';
+			break;
+		}
+		case 'geodesicEnd': {
+			instructionMsg = 'select geodesic ending point';
+			break;
+		}
+		case 'free': {
+			break;
+		}
+		default: {
+			assertUnhandledType(appState.userState);
+		}
+	}
+
+	const instructionMsgDom = (instructionMsg == null) ? null : (
+		<div
+			className="notif-pane instruction-pane"
+		>
+			{ instructionMsg }
+		</div>
+	);
+
 	const errMsgDom = (appState.errMsg == null) ? null : (
 		<div
-			className="error-pane"
+			className="notif-pane error-pane"
 		>
 			{ appState.errMsg }
 		</div>
@@ -216,10 +252,16 @@ const App = (): JSX.Element => {
 					onMarkerClick={handleMarkerClick}
 					onMarkerRightClick={handleMarkerRightClick}
 				/>
-				{ errMsgDom }
+				<div
+					className="notifs-pane"
+				>
+					{ instructionMsgDom }
+					{ errMsgDom }
+				</div>
 			</div>
 			<div className="objs-editor-pane">
 				<ObjsEditorView
+					earth={appState.earth}
 					userState={appState.userState}
 					objs={appState.geomObjs}
 					onUpdate={handleUpdate}

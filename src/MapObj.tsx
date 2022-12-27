@@ -1,7 +1,9 @@
-import { GeomObjName } from './GeomObj';
+import { GeomObjName, ResolvedGeomObjSpec } from './GeomObj';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
+// Nominal typing hack to ensure that geomObj and mapObj names
+// don't get mixed up. They compile to just strings.
 enum MapObjNameBrand { _ = '' };
 type MapObjName = MapObjNameBrand & string;
 
@@ -11,7 +13,7 @@ const newMapObjName = (uniqName: string): MapObjName => {
 
 type MapObjSpecBase = {
 	uniqName: MapObjName;
-	geomObjName: GeomObjName;
+	geomObj: ResolvedGeomObjSpec;
 };
 
 type MapDragMarkerSpec = MapObjSpecBase & {

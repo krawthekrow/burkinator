@@ -41,24 +41,59 @@ type AlterPtRefUpdBase = AlterUpdBase & {
 	newPtRef: GeomObjName;
 };
 
-type AlterGeodesicFromUpd = AlterPtRefUpdBase & {
-	t: 'geodesicFrom';
+type AlterBoolUpdBase = AlterUpdBase & {
+	newVal: boolean;
 };
 
-type AlterGeodesicToUpd = AlterPtRefUpdBase & {
-	t: 'geodesicTo';
+type AlterNumberUpdBase = AlterUpdBase & {
+	newVal: number;
 };
+
+type AlterGeodesicPtRefUpd = AlterPtRefUpdBase & {
+	t: 'geodesicStart' | 'geodesicEnd';
+};
+
+type AlterGeodesicBoolUpd = AlterBoolUpdBase & {
+	t: 'geodesicUseFarArc' | 'geodesicDestPtEnabled';
+};
+
+type AlterGeodesicNumberUpd = AlterNumberUpdBase & {
+	t: 'geodesicDestPtTurnAngle' | 'geodesicDestPtDist';
+};
+
+type AlterGeodesicDestPtUpd = AlterUpdBase & {
+	t: 'geodesicDestPt';
+	newTurnAngle: number;
+	newDist: number;
+};
+
+type AlterGeodesicDestPtMapLabelUpd = AlterUpdBase & {
+	t: 'geodesicDestPtMapLabel';
+	newVal: string;
+};
+
+type AlterGeodesicUpd =
+	AlterGeodesicPtRefUpd | AlterGeodesicBoolUpd | AlterGeodesicNumberUpd |
+	AlterGeodesicDestPtUpd | AlterGeodesicDestPtMapLabelUpd
+;
 
 type AlterPtRefUpd =
-	AlterGeodesicFromUpd |
-	AlterGeodesicToUpd
+	AlterGeodesicPtRefUpd
+;
+
+type AlterBoolUpd =
+	AlterGeodesicBoolUpd
+;
+
+type AlterNumberUpd =
+	AlterGeodesicNumberUpd
 ;
 
 type AlterUpd =
 	AlterNameUpd |
 	AlterPosUpd |
 	AlterMapLabelUpd |
-	AlterPtRefUpd
+	AlterGeodesicUpd
 ;
 
 type StateUpd =
@@ -72,9 +107,9 @@ export type {
 	AlterNameUpd,
 	AlterPosUpd,
 	AlterMapLabelUpd,
-	AlterGeodesicFromUpd,
-	AlterGeodesicToUpd,
 	AlterPtRefUpd,
+	AlterBoolUpd,
+	AlterGeodesicUpd,
 	AlterUpd,
 	NewPointUpd,
 	NewGeodesicUpd,

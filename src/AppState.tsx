@@ -1,15 +1,23 @@
 import { assertUnhandledType } from './Misc';
+import { EarthModel, getAntipode } from './EarthModel';
 import { UserState } from './UserState';
-import { GeomObjName, GeomObjSpec, newGeomObjName } from './GeomObj';
+import {
+	GeomObjName, GeomObjSpec, ResolvedGeomObjSpec,
+	newGeomObjName, geomObjNameToString,
+	resolveGeomObjs, getGeomObjPos, invertGeodesicDestPt,
+} from './GeomObj';
 import {
 	MapObjName, newMapObjName,
-	MapObjSpec
+	MapObjSpec,
 } from './MapObj';
-import { AlterPtRefUpd, AlterUpd, StateUpd } from './StateUpd';
+import {
+	AlterGeodesicUpd, AlterPtRefUpd, AlterUpd, StateUpd,
+} from './StateUpd';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 type AppState = {
+	earth: EarthModel;
 	userState: UserState;
 	geomObjs: GeomObjSpec[];
 	mapObjs: MapObjSpec[];
@@ -19,13 +27,16 @@ type AppState = {
 	errMsg: string | null;
 };
 
-const findGeomObjIndex = (
+const findGeomObjWithIndex = (
 	appState: AppState,
 	uniqName: GeomObjName
-): number => {
-	return appState.geomObjs.findIndex((geomObj) => {
-		return geomObj.uniqName == uniqName;
-	});
+): [number, GeomObjSpec | null] => {
+	for (const [i, geomObj] of appState.geomObjs.entries()) {
+		if (geomObj.uniqName == uniqName) {
+			return [i, geomObj];
+		}
+	}
+	return [-1, null];
 };
 
 const findGeomObj = (
@@ -47,39 +58,77 @@ const findMapObj = (
 };
 
 const geomObjsToMapObjs = (
+	earth: EarthModel,
 	geomObjs: GeomObjSpec[]
 ): MapObjSpec[] => {
+	const resolvedObjs = resolveGeomObjs(earth, geomObjs);
 	const mapObjs: MapObjSpec[] = [];
-	const objsDict: { [uniqName: string]: GeomObjSpec } = {};
-	for (const geomObj of geomObjs) {
-		objsDict[geomObj.uniqName] = geomObj;
+	for (const geomObj of resolvedObjs) {
 		switch(geomObj.t) {
 			case 'point': {
 				mapObjs.push({
 					t: 'dragMarker',
 					uniqName: newMapObjName(geomObj.uniqName),
-					geomObjName: geomObj.uniqName,
+					geomObj: geomObj,
 					pos: geomObj.pos,
 					mapLabel: geomObj.mapLabel,
 				});
 				break;
 			}
 			case 'geodesic': {
-				if (geomObj.ptFrom == null || geomObj.ptTo == null) {
+				const posStart = getGeomObjPos(geomObj.ptStart);
+				const posEnd = getGeomObjPos(geomObj.ptEnd);
+				const destPtStartPos = (posEnd != null) ? posEnd : posStart;
+				if (geomObj.destPtPos != null) {
+					mapObjs.push({
+						t: 'dragMarker',
+						uniqName: newMapObjName(`${geomObj.uniqName}$pt`),
+						geomObj: geomObj,
+						pos: geomObj.destPtPos,
+						mapLabel: geomObj.destPtMapLabel,
+					});
+					if (destPtStartPos == null) {
+						throw new Error('pos should only be defined if startPos is defined');
+					}
+					mapObjs.push({
+						t: 'polyline',
+						uniqName: newMapObjName(`${geomObj.uniqName}$ptpath`),
+						geomObj: geomObj,
+						path: [destPtStartPos, geomObj.destPtPos],
+					});
+				}
+
+				if (posStart == null || posEnd == null) {
 					// cannot draw geodesic between unknown points
 					break;
 				}
 
-				const ptFrom = objsDict[geomObj.ptFrom];
-				const ptTo = objsDict[geomObj.ptTo];
-				if (ptFrom.t != 'point' || ptTo.t != 'point') {
-					throw new Error('geodesic endpoints need to be points');
+				if (
+					posStart.lat == posEnd.lat &&
+					posStart.lng == posEnd.lng
+				) {
+					// no geodesic between two of the same point
+					break;
 				}
+
+				const posStartAntipode = getAntipode(earth, posStart);
+				const posEndAntipode = getAntipode(earth, posEnd);
+
+				const path = geomObj.useFarArc ? [
+					posEnd,
+					posStartAntipode,
+					posEndAntipode,
+					posStart,
+				] : [
+					posStart,
+					posEnd,
+				];
+
 				mapObjs.push({
 					t: 'polyline',
 					uniqName: newMapObjName(geomObj.uniqName),
-					geomObjName: geomObj.uniqName,
-					path: [ptFrom.pos, ptTo.pos],
+					geomObj: geomObj,
+					path: path,
 				});
 				break;
 			}
@@ -92,69 +141,105 @@ const geomObjsToMapObjs = (
 };
 
 const syncObjs = (appState: AppState): void => {
-	appState.mapObjs = geomObjsToMapObjs(appState.geomObjs);
+	appState.mapObjs = geomObjsToMapObjs(appState.earth, appState.geomObjs);
 };
 
-const applyAlterPtRefUpd = (
-	objIndex: number,
-	obj: GeomObjSpec,
+const validatePtRefUpd = (
 	upd: AlterPtRefUpd,
 	appState: AppState
 ): boolean => {
-	const targetPtIndex = findGeomObjIndex(appState, upd.newPtRef);
-	if (targetPtIndex == -1) {
-		appState.errMsg = `could not find point with name ${upd.newPtRef}`;
-		return false;
+	if (upd.newPtRef == '') {
+		return true;
 	}
 
-	const targetPt = appState.geomObjs[targetPtIndex];
-	if (targetPt.t != 'point') {
-		appState.errMsg = `${upd.newPtRef} is not a point`;
-		return false;
+	for (const geomObj of appState.geomObjs) {
+		if (geomObj.uniqName == upd.uniqName) {
+			appState.errMsg =
+				`${upd.newPtRef} does not come before ${geomObj.uniqName}`;
+			return false;
+		}
+		else if (geomObj.uniqName == upd.newPtRef) {
+			return true;
+		}
 	}
 
-	if (targetPtIndex >= objIndex) {
-		appState.errMsg =
-			`${upd.newPtRef} does not come before ${obj.uniqName} in the list`;
-		return false;
-	}
+	appState.errMsg = `could not find object with name ${upd.newPtRef}`;
+	return false;
+};
 
+const applyAlterGeodesicUpd = (
+	objIndex: number,
+	obj: GeomObjSpec,
+	upd: AlterGeodesicUpd,
+	appState: AppState
+): boolean => {
+	if (obj.t != 'geodesic') {
+		throw new Error('geom obj is not a geodesic obj');
+	}
 	switch (upd.t) {
-		case 'geodesicFrom': {
-			if (obj.t != 'geodesic') {
-				throw new Error('geodesicFrom only applies to geodesics');
+		case 'geodesicStart': {
+			if (!validatePtRefUpd(upd, appState)) {
+				return false;
 			}
-			obj.ptFrom = upd.newPtRef;
-			break;
+			obj.ptStart = upd.newPtRef;
+			return true;
 		}
-		case 'geodesicTo': {
-			if (obj.t != 'geodesic') {
-				throw new Error('geodesicTo only applies to geodesics');
+		case 'geodesicEnd': {
+			if (!validatePtRefUpd(upd, appState)) {
+				return false;
 			}
-			obj.ptTo = upd.newPtRef;
-			break;
+			obj.ptEnd = upd.newPtRef;
+			return true;
+		}
+		case 'geodesicUseFarArc': {
+			obj.useFarArc = upd.newVal;
+			return true;
+		}
+		case 'geodesicDestPtEnabled': {
+			obj.destPtEnabled = upd.newVal;
+			return true;
+		}
+		case 'geodesicDestPtTurnAngle': {
+			obj.destPtTurnAngle = upd.newVal;
+			return true;
+		}
+		case 'geodesicDestPtDist': {
+			obj.destPtDist = upd.newVal;
+			return true;
+		}
+		case 'geodesicDestPt': {
+			obj.destPtTurnAngle = upd.newTurnAngle;
+			obj.destPtDist = upd.newDist;
+			return true;
+		}
+		case 'geodesicDestPtMapLabel': {
+			obj.destPtMapLabel = upd.newVal;
+			return true;
 		}
 	}
-
-	return true;
+	assertUnhandledType(upd);
 };
 
 const applyAlterUpd = (
 	upd: AlterUpd,
 	appState: AppState
 ): boolean => {
-	const objIndex = findGeomObjIndex(appState, upd.uniqName);
-	if (objIndex == -1) {
+	const [objIndex, obj] = findGeomObjWithIndex(appState, upd.uniqName);
+	if (!obj) {
 		throw new Error(
 			`could not find geom obj with name ${upd.uniqName}`
 		);
 	}
-	const obj = appState.geomObjs[objIndex];
 
 	switch (upd.t) {
 		case 'name': {
 			// don't handle a conflict if the name is unchanged
 			if (upd.newName == upd.uniqName) {
+				return false;
+			}
+			if (geomObjNameToString(upd.newName).includes('$')) {
+				// "$" is used as a special character for mapObj names
+				appState.errMsg = `name cannot contain "$"`;
 				return false;
 			}
 
@@ -190,12 +275,15 @@ const applyAlterUpd = (
 			obj.mapLabel = upd.newMapLabel;
 			break;
 		}
-		case 'geodesicFrom':
-		case 'geodesicTo':
-		{
-			if (!applyAlterPtRefUpd(objIndex, obj, upd, appState)) {
-				return false;
-			}
+		case 'geodesicStart':
+		case 'geodesicEnd':
+		case 'geodesicUseFarArc':
+		case 'geodesicDestPtEnabled':
+		case 'geodesicDestPtTurnAngle':
+		case 'geodesicDestPtDist':
+		case 'geodesicDestPt':
+		case 'geodesicDestPtMapLabel': {
+			applyAlterGeodesicUpd(objIndex, obj, upd, appState);
 			break;
 		}
 		default: {
@@ -215,8 +303,8 @@ const getDependencySet = (
 		switch (geomObj.t) {
 			case 'geodesic': {
 				if (
-					(geomObj.ptFrom != null && depSet.includes(geomObj.ptFrom)) ||
-					(geomObj.ptTo != null && depSet.includes(geomObj.ptTo))
+					(geomObj.ptStart != null && depSet.includes(geomObj.ptStart)) ||
+					(geomObj.ptEnd != null && depSet.includes(geomObj.ptEnd))
 				) {
 					depSet.push(geomObj.uniqName);
 				}
@@ -256,13 +344,18 @@ const applyUpd = (
 			appState.geomObjs.push({
 				t: 'geodesic',
 				uniqName: uniqName,
-				ptFrom: null,
-				ptTo: null,
+				ptStart: newGeomObjName(''),
+				ptEnd: newGeomObjName(''),
+				useFarArc: false,
+				destPtEnabled: false,
+				destPtTurnAngle: 0,
+				destPtDist: 0,
+				destPtMapLabel: uniqName,
 			});
 			appState.userState = {
-				t: 'geodesicFrom',
+				t: 'geodesicStart',
 				uniqName: uniqName,
-				doPtToNext: true,
+				doPtEndNext: true,
 			};
 			break;
 		}
@@ -280,19 +373,11 @@ const applyUpd = (
 			);
 			break;
 		}
-		case 'name':
-		case 'pos':
-		case 'mapLabel':
-		case 'geodesicFrom':
-		case 'geodesicTo':
-		{
+		default: {
 			if (!applyAlterUpd(upd, appState)) {
 				return false;
 			}
 			break;
-		}
-		default: {
-			assertUnhandledType(upd);
 		}
 	}
 	if (doSync) {
@@ -304,15 +389,38 @@ const applyUpd = (
 const updateMarkerPos = (
 	appState: AppState,
 	markerName: MapObjName,
-	geomObjName: GeomObjName,
+	geomObj: ResolvedGeomObjSpec,
 	pos: LatLngLiteral,
 	doSync: boolean = true
 ) => {
-	applyUpd(appState, {
-		t: 'pos',
-		uniqName: geomObjName,
-		newPos: pos,
-	}, doSync);
+	switch (geomObj.t) {
+		case 'point': {
+			applyUpd(appState, {
+				t: 'pos',
+				uniqName: geomObj.uniqName,
+				newPos: pos,
+			}, doSync);
+			break;
+		}
+		case 'geodesic': {
+			const destPtParams = invertGeodesicDestPt(
+				appState.earth, geomObj, pos
+			);
+			if (destPtParams == null) {
+				throw new Error('dest pt params should be computable');
+			}
+			applyUpd(appState, {
+				t: 'geodesicDestPt',
+				uniqName: geomObj.uniqName,
+				newTurnAngle: destPtParams.turnAngle,
+				newDist: destPtParams.dist,
+			}, doSync);
+			break;
+		}
+		default: {
+			assertUnhandledType(geomObj);
+		}
+	}
 
 	if (!doSync) {
 		// if we don't update the rest of the mapObjs, at least update
@@ -336,7 +444,7 @@ const AppStateReducer = {
 export type { AppState };
 export {
 	AppStateReducer,
-	findGeomObjIndex,
+	findGeomObjWithIndex,
 	findGeomObj,
 	geomObjsToMapObjs,
 };

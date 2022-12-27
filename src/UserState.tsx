@@ -4,19 +4,19 @@ type UserStateFree = {
 	t: 'free';
 };
 
-type UserStateSelectGeodesicFrom = {
-	t: 'geodesicFrom';
+type UserStateSelectGeodesicStart = {
+	t: 'geodesicStart';
 	uniqName: GeomObjName;
-	doPtToNext: boolean;
+	doPtEndNext: boolean;
 };
 
 type UserStateSelectGeodesicTo = {
-	t: 'geodesicTo';
+	t: 'geodesicEnd';
 	uniqName: GeomObjName;
 };
 
 type UserStateSelectPt =
-	UserStateSelectGeodesicFrom |
+	UserStateSelectGeodesicStart |
 	UserStateSelectGeodesicTo
 ;
 
@@ -27,7 +27,7 @@ type UserState =
 
 export type {
 	UserStateFree,
-	UserStateSelectGeodesicFrom,
+	UserStateSelectGeodesicStart,
 	UserStateSelectGeodesicTo,
 	UserStateSelectPt,
 	UserState,

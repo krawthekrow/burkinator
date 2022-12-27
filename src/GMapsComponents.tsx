@@ -1,8 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { flattenLatLng } from './Misc';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 import LatLng = google.maps.LatLng;
+
+const flattenLatLng = (pos: LatLng): LatLngLiteral => {
+	return { lat: pos.lat(), lng: pos.lng() };
+}
 
 const GMap = (
 	{center, zoom, onMapInit, onClick}: {

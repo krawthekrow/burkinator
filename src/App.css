@@ -17,6 +17,7 @@
 	display: flex;
 	align-items: stretch;
 	height: 100%;
+	text-align: left;
 }
 
 .map-pane {
@@ -30,7 +31,6 @@
 
 .objs-editor-pane {
 	flex: 1;
-	text-align: left;
 	padding: 0 0.5rem;
 	overflow: scroll;
 }
@@ -71,11 +71,38 @@
 	border-color: #523;
 }
 
-.error-pane {
+.notifs-pane {
 	position: absolute;
 	top: 0;
 	left: 0;
 	z-index: 2;
-	background-color: #812;
+}
+
+.notif-pane {
 	padding: 0.3rem 0.4rem 0px 0.4rem;
+	width: fit-content;
+}
+
+.error-pane {
+	background-color: #812;
+}
+
+.instruction-pane {
+	background-color: #182;
+}
+
+.editor-btn-group {
+	display: inline-block;
+}
+
+.editor-btn-group button:last-child {
+	border-radius: 0 3px 3px 0;
+}
+
+.editor-btn-group button:first-child {
+	border-radius: 3px 0 0 3px;
+}
+
+.editor-btn-group > button {
+	border-radius: 0px;
 }
