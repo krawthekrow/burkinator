@@ -39,7 +39,7 @@ const Toolbar = (
 			className="toolbar-button"
 			disabled={userState.t != 'free'}
 			onClick={handleClickNewGeodesic}
-		>Geodesic</button>
+		>Add Geodesic</button>
 	</>
 };
 

@@ -98,38 +98,31 @@ const geomObjsToMapObjs = (
 					});
 				}
 
-				if (posStart == null || posEnd == null) {
-					// cannot draw geodesic between unknown points
-					break;
-				}
-
 				if (
-					posStart.lat == posEnd.lat &&
-					posStart.lng == posEnd.lng
+					posStart != null && posEnd != null &&
+					!(posStart.lat == posEnd.lat && posStart.lng == posEnd.lng)
 				) {
-					// no geodesic between two of the same point
-					break;
+					// cannot draw geodesic between unknown points
+					const posStartAntipode = getAntipode(earth, posStart);
+					const posEndAntipode = getAntipode(earth, posEnd);
+
+					const path = geomObj.useFarArc ? [
+						posEnd,
+						posStartAntipode,
+						posEndAntipode,
+						posStart,
+					] : [
+						posStart,
+						posEnd,
+					];
+
+					mapObjs.push({
+						t: 'polyline',
+						uniqName: newMapObjName(geomObj.uniqName),
+						geomObj: geomObj,
+						path: path,
+					});
 				}
-
-				const posStartAntipode = getAntipode(earth, posStart);
-				const posEndAntipode = getAntipode(earth, posEnd);
-
-				const path = geomObj.useFarArc ? [
-					posEnd,
-					posStartAntipode,
-					posEndAntipode,
-					posStart,
-				] : [
-					posStart,
-					posEnd,
-				];
-
-				mapObjs.push({
-					t: 'polyline',
-					uniqName: newMapObjName(geomObj.uniqName),
-					geomObj: geomObj,
-					path: path,
-				});
 				break;
 			}
 			default: {
@@ -258,6 +251,7 @@ const applyAlterUpd = (
 				obj.mapLabel = upd.newName;
 			}
 
+			renameRefs(appState.geomObjs, obj.uniqName, upd.newName);
 			obj.uniqName = upd.newName;
 			break;
 		}
@@ -294,19 +288,19 @@ const applyAlterUpd = (
 	return true;
 };
 
-const getDependencySet = (
+const renameRefs = (
 	geomObjs: GeomObjSpec[],
-	uniqName: GeomObjName
-): GeomObjName[] => {
-	const depSet = [uniqName];
+	oldName: GeomObjName,
+	newName: GeomObjName,
+): void => {
 	for (const geomObj of geomObjs) {
 		switch (geomObj.t) {
 			case 'geodesic': {
-				if (
-					(geomObj.ptStart != null && depSet.includes(geomObj.ptStart)) ||
-					(geomObj.ptEnd != null && depSet.includes(geomObj.ptEnd))
-				) {
-					depSet.push(geomObj.uniqName);
+				if (geomObj.ptStart == oldName) {
+					geomObj.ptStart = newName;
+				}
+				if (geomObj.ptEnd == oldName) {
+					geomObj.ptEnd = newName;
 				}
 				break;
 			}
@@ -318,7 +312,6 @@ const getDependencySet = (
 			}
 		}
 	}
-	return depSet;
 };
 
 const applyUpd = (
@@ -360,17 +353,10 @@ const applyUpd = (
 			break;
 		}
 		case 'delete': {
-			const depSet = getDependencySet(appState.geomObjs, upd.uniqName);
-			if (!confirm(
-				`Delete ${depSet.join(', ')}?`
-			)) {
-				break;
-			}
-			appState.geomObjs = appState.geomObjs.filter(
-				(geomObj) => {
-					return !depSet.includes(geomObj.uniqName);
-				}
-			);
+			renameRefs(appState.geomObjs, upd.uniqName, newGeomObjName(''));
+			appState.geomObjs = appState.geomObjs.filter((geomObj) => {
+				return geomObj.uniqName != upd.uniqName;
+			});
 			break;
 		}
 		default: {
