@@ -21,11 +21,12 @@ import ObjsEditorView from './ObjsEditorView';
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 const Toolbar = (
-	{appState, onUpdate, onUndo, onRedo}: {
+	{appState, onUpdate, onUndo, onRedo, onCancel}: {
 		appState: AppState,
 		onUpdate: (upd: StateUpd) => void,
 		onUndo: () => void,
 		onRedo: () => void,
+		onCancel: () => void,
 	}
 ): JSX.Element => {
 	const userState = appState.userState;
@@ -53,6 +54,22 @@ const Toolbar = (
 		onRedo();
 	};
 
+	const handleClickCancel = (
+		e: React.MouseEvent<HTMLButtonElement>
+	) => {
+		onCancel();
+	};
+
+	const cancelButtonDom = [
+		'geodesicStart', 'geodesicEnd',
+	].includes(userState.t) ? <button
+		className="toolbar-button"
+		disabled={false}
+		onClick={handleClickCancel}
+	>
+		Cancel
+	</button> : null;
+
 	return <>
 		<button
 			className="toolbar-button"
@@ -69,6 +86,7 @@ const Toolbar = (
 			disabled={userState.t != 'free' || !redoEnabled}
 			onClick={handleClickRedo}
 		>Redo</button>
+		{ cancelButtonDom }
 	</>;
 };
 
@@ -234,18 +252,35 @@ const App = (): JSX.Element => {
 		});
 	};
 
-	let instructionMsg: JSX.Element | null = null;
+	const handleCancel = () => {
+		setAppState((draftAppState) => {
+			AppStateReducer.startNewAction(draftAppState);
+			switch (draftAppState.userState.t) {
+				case 'geodesicStart':
+				case 'geodesicEnd': {
+					draftAppState.userState = {
+						t: 'free'
+					};
+					break;
+				}
+				case 'free': {
+					throw new Error('nothing to cancel');
+				}
+				default: {
+					assertUnhandledType(draftAppState.userState);
+				}
+			}
+		});
+	};
+
+	let instructionMsg: string | null = null;
 	switch (appState.userState.t) {
 		case 'geodesicStart': {
-			instructionMsg = <>
-				select starting point
-			</>;
+			instructionMsg = 'select starting point';
 			break;
 		}
 		case 'geodesicEnd': {
-			instructionMsg = <>
-				select ending point
-			</>;
+			instructionMsg = 'select ending point';
 			break;
 		}
 		case 'free': {
@@ -283,6 +318,7 @@ const App = (): JSX.Element => {
 				onUpdate={handleUpdate}
 				onUndo={handleUndo}
 				onRedo={handleRedo}
+				onCancel={handleCancel}
 			/>
 		</div>
 		<div className="main-pane">
