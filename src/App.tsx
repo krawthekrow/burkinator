@@ -21,11 +21,18 @@ import ObjsEditorView from './ObjsEditorView';
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 const Toolbar = (
-	{userState, onUpdate}: {
-		userState: UserState,
+	{appState, onUpdate, onUndo, onRedo}: {
+		appState: AppState,
 		onUpdate: (upd: StateUpd) => void,
+		onUndo: () => void,
+		onRedo: () => void,
 	}
 ): JSX.Element => {
+	const userState = appState.userState;
+	const undoEnabled = appState.updHistoryIndex > 0;
+	const redoEnabled =
+		appState.updHistoryIndex < appState.updHistory.length;
+
 	const handleClickNewGeodesic = (
 		e: React.MouseEvent<HTMLButtonElement>
 	) => {
@@ -34,13 +41,35 @@ const Toolbar = (
 		});
 	};
 
+	const handleClickUndo = (
+		e: React.MouseEvent<HTMLButtonElement>
+	) => {
+		onUndo();
+	};
+
+	const handleClickRedo = (
+		e: React.MouseEvent<HTMLButtonElement>
+	) => {
+		onRedo();
+	};
+
 	return <>
 		<button
 			className="toolbar-button"
 			disabled={userState.t != 'free'}
 			onClick={handleClickNewGeodesic}
-		>Add Geodesic</button>
-	</>
+		>Add Line</button>
+		<button
+			className="toolbar-button"
+			disabled={userState.t != 'free' || !undoEnabled}
+			onClick={handleClickUndo}
+		>Undo</button>
+		<button
+			className="toolbar-button"
+			disabled={userState.t != 'free' || !redoEnabled}
+			onClick={handleClickRedo}
+		>Redo</button>
+	</>;
 };
 
 const App = (): JSX.Element => {
@@ -73,6 +102,10 @@ const App = (): JSX.Element => {
 	const [appState, setAppState] = useImmer<AppState>({
 		earth: initEarth,
 		userState: { t: 'free' },
+		updHistory: [],
+		updHistoryIndex: 0,
+		updHistoryAcceptMerge: false,
+		updHistoryNextAcceptMerge: false,
 		geomObjs: initObjs,
 		mapObjs: geomObjsToMapObjs(initEarth, initObjs),
 		// last used id to assign each object a unique default name
@@ -88,7 +121,7 @@ const App = (): JSX.Element => {
 
 	const handleMapClick = (pos: LatLngLiteral) => {
 		setAppState((draftAppState) => {
-			draftAppState.errMsg = null;
+			AppStateReducer.startNewAction(draftAppState);
 			if (draftAppState.userState.t != 'free') {
 				return;
 			}
@@ -105,7 +138,8 @@ const App = (): JSX.Element => {
 		pos: LatLngLiteral
 	) => {
 		setAppState((draftAppState) => {
-			draftAppState.errMsg = null;
+			AppStateReducer.startNewAction(draftAppState);
+			draftAppState.updHistoryNextAcceptMerge = true;
 			AppStateReducer.updateMarkerPos(
 				draftAppState, markerName, geomObj, pos
 			);
@@ -118,7 +152,7 @@ const App = (): JSX.Element => {
 		pos: LatLngLiteral
 	) => {
 		setAppState((draftAppState) => {
-			draftAppState.errMsg = null;
+			AppStateReducer.startNewAction(draftAppState);
 			AppStateReducer.updateMarkerPos(
 				draftAppState, markerName, geomObj, pos
 			);
@@ -130,7 +164,7 @@ const App = (): JSX.Element => {
 		geomObj: ResolvedGeomObjSpec,
 	) => {
 		setAppState((draftAppState) => {
-			draftAppState.errMsg = null;
+			AppStateReducer.startNewAction(draftAppState);
 			const userState = draftAppState.userState;
 			switch (userState.t) {
 				case 'geodesicStart': {
@@ -139,14 +173,6 @@ const App = (): JSX.Element => {
 						uniqName: userState.uniqName,
 						newPtRef: geomObj.uniqName,
 					});
-					if (updSuccess) {
-						draftAppState.userState = userState.doPtEndNext ? {
-							t: 'geodesicEnd',
-							uniqName: userState.uniqName,
-						} : {
-							t: 'free',
-						};
-					}
 					break;
 				}
 				case 'geodesicEnd': {
@@ -171,7 +197,7 @@ const App = (): JSX.Element => {
 		geomObj: ResolvedGeomObjSpec,
 	) => {
 		setAppState((draftAppState) => {
-			draftAppState.errMsg = null;
+			AppStateReducer.startNewAction(draftAppState);
 			// TODO: remove marker
 		});
 	};
@@ -180,7 +206,7 @@ const App = (): JSX.Element => {
 		upd: StateUpd
 	) => {
 		setAppState((draftAppState) => {
-			draftAppState.errMsg = null;
+			AppStateReducer.startNewAction(draftAppState);
 			AppStateReducer.applyUpd(draftAppState, upd);
 		});
 	};
@@ -189,19 +215,37 @@ const App = (): JSX.Element => {
 		newState: UserState
 	) => {
 		setAppState((draftAppState) => {
-			draftAppState.errMsg = null;
+			AppStateReducer.startNewAction(draftAppState);
 			draftAppState.userState = newState;
 		});
 	};
 
-	let instructionMsg = null;
+	const handleUndo = () => {
+		setAppState((draftAppState) => {
+			AppStateReducer.startNewAction(draftAppState);
+			AppStateReducer.applyUndo(draftAppState);
+		});
+	};
+
+	const handleRedo = () => {
+		setAppState((draftAppState) => {
+			AppStateReducer.startNewAction(draftAppState);
+			AppStateReducer.applyRedo(draftAppState);
+		});
+	};
+
+	let instructionMsg: JSX.Element | null = null;
 	switch (appState.userState.t) {
 		case 'geodesicStart': {
-			instructionMsg = 'select geodesic starting point';
+			instructionMsg = <>
+				select starting point
+			</>;
 			break;
 		}
 		case 'geodesicEnd': {
-			instructionMsg = 'select geodesic ending point';
+			instructionMsg = <>
+				select ending point
+			</>;
 			break;
 		}
 		case 'free': {
@@ -235,8 +279,10 @@ const App = (): JSX.Element => {
 	>
 		<div className="toolbar-pane">
 			<Toolbar
-				userState={appState.userState}
+				appState={appState}
 				onUpdate={handleUpdate}
+				onUndo={handleUndo}
+				onRedo={handleRedo}
 			/>
 		</div>
 		<div className="main-pane">

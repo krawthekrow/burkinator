@@ -102,7 +102,9 @@ const resolveGeomObjs = (
 		}
 		const resolvedObj = resolvedObjsMap[uniqName];
 		if (!resolvedObj) {
-			throw new Error(`unable to resolve ${uniqName}`);
+			// Keep invalid names but display them as empty.
+			// This makes it easier to undo deletions.
+			return null;
 		}
 		return resolvedObj;
 	};

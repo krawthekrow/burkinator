@@ -1,19 +1,34 @@
-import { GeomObjName } from './GeomObj';
+import { GeomObjName, GeomObjSpec } from './GeomObj';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 type NewPointUpd = {
 	t: 'newPoint';
+	uniqName?: GeomObjName;
 	pos: LatLngLiteral;
+};
+
+type UndoableNewPointUpd = NewPointUpd & {
+	uniqName: GeomObjName;
 };
 
 type NewGeodesicUpd = {
 	t: 'newGeodesic';
+	uniqName?: GeomObjName;
+};
+
+type UndoableNewGeodesicUpd = NewGeodesicUpd & {
+	uniqName: GeomObjName;
 };
 
 type DeleteObjUpd = {
 	t: 'delete';
 	uniqName: GeomObjName;
+};
+
+type UndoableDeleteObjUpd = DeleteObjUpd & {
+	deletedObjIndex: number;
+	deletedObj: GeomObjSpec;
 };
 
 // Types used to describe an update to a geometric object.
@@ -32,9 +47,17 @@ type AlterPosUpd = AlterUpdBase & {
 	newPos: LatLngLiteral;
 };
 
+type UndoableAlterPosUpd = AlterPosUpd & {
+	oldPos: LatLngLiteral
+};
+
 type AlterMapLabelUpd = AlterUpdBase & {
 	t: 'mapLabel';
 	newMapLabel: string;
+};
+
+type UndoableAlterMapLabelUpd = AlterMapLabelUpd & {
+	oldMapLabel: string;
 };
 
 type AlterPtRefUpdBase = AlterUpdBase & {
@@ -53,12 +76,24 @@ type AlterGeodesicPtRefUpd = AlterPtRefUpdBase & {
 	t: 'geodesicStart' | 'geodesicEnd';
 };
 
+type UndoableAlterGeodesicPtRefUpd = AlterGeodesicPtRefUpd & {
+	oldPtRef: GeomObjName;
+};
+
 type AlterGeodesicBoolUpd = AlterBoolUpdBase & {
 	t: 'geodesicUseFarArc' | 'geodesicDestPtEnabled';
 };
 
+type UndoableAlterGeodesicBoolUpd = AlterGeodesicBoolUpd & {
+	oldVal: boolean;
+};
+
 type AlterGeodesicNumberUpd = AlterNumberUpdBase & {
 	t: 'geodesicDestPtTurnAngle' | 'geodesicDestPtDist';
+};
+
+type UndoableAlterGeodesicNumberUpd = AlterGeodesicNumberUpd & {
+	oldVal: number;
 };
 
 type AlterGeodesicDestPtUpd = AlterUpdBase & {
@@ -67,33 +102,49 @@ type AlterGeodesicDestPtUpd = AlterUpdBase & {
 	newDist: number;
 };
 
+type UndoableAlterGeodesicDestPtUpd = AlterGeodesicDestPtUpd & {
+	oldTurnAngle: number;
+	oldDist: number;
+};
+
 type AlterGeodesicDestPtMapLabelUpd = AlterUpdBase & {
 	t: 'geodesicDestPtMapLabel';
 	newVal: string;
 };
+
+type UndoableAlterGeodesicDestPtMapLabelUpd =
+	AlterGeodesicDestPtMapLabelUpd & {
+		oldVal: string;
+	};
 
 type AlterGeodesicUpd =
 	AlterGeodesicPtRefUpd | AlterGeodesicBoolUpd | AlterGeodesicNumberUpd |
 	AlterGeodesicDestPtUpd | AlterGeodesicDestPtMapLabelUpd
 ;
 
-type AlterPtRefUpd =
-	AlterGeodesicPtRefUpd
-;
-
-type AlterBoolUpd =
-	AlterGeodesicBoolUpd
-;
-
-type AlterNumberUpd =
-	AlterGeodesicNumberUpd
-;
+type AlterPtRefUpd = AlterGeodesicPtRefUpd;
 
 type AlterUpd =
 	AlterNameUpd |
 	AlterPosUpd |
 	AlterMapLabelUpd |
 	AlterGeodesicUpd
+;
+
+type UndoableAlterGeodesicUpd =
+	UndoableAlterGeodesicPtRefUpd | UndoableAlterGeodesicBoolUpd |
+	UndoableAlterGeodesicNumberUpd | UndoableAlterGeodesicDestPtUpd |
+	UndoableAlterGeodesicDestPtMapLabelUpd
+;
+
+type UndoableAlterUpd =
+	AlterNameUpd | UndoableAlterPosUpd | UndoableAlterMapLabelUpd |
+	UndoableAlterGeodesicUpd
+;
+
+type UndoableUpd =
+	UndoableNewPointUpd | UndoableNewGeodesicUpd |
+	UndoableDeleteObjUpd | UndoableAlterUpd
 ;
 
 type StateUpd =
@@ -108,11 +159,13 @@ export type {
 	AlterPosUpd,
 	AlterMapLabelUpd,
 	AlterPtRefUpd,
-	AlterBoolUpd,
 	AlterGeodesicUpd,
 	AlterUpd,
 	NewPointUpd,
 	NewGeodesicUpd,
 	DeleteObjUpd,
 	StateUpd,
+	UndoableAlterGeodesicUpd,
+	UndoableAlterUpd,
+	UndoableUpd,
 };

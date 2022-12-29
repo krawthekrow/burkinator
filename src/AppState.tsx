@@ -12,6 +12,7 @@ import {
 } from './MapObj';
 import {
 	AlterGeodesicUpd, AlterPtRefUpd, AlterUpd, StateUpd,
+	UndoableAlterGeodesicUpd, UndoableAlterUpd, UndoableUpd,
 } from './StateUpd';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
@@ -19,6 +20,10 @@ import LatLngLiteral = google.maps.LatLngLiteral;
 type AppState = {
 	earth: EarthModel;
 	userState: UserState;
+	updHistory: UndoableUpd[];
+	updHistoryIndex: number;
+	updHistoryAcceptMerge: boolean;
+	updHistoryNextAcceptMerge: boolean;
 	geomObjs: GeomObjSpec[];
 	mapObjs: MapObjSpec[];
 	lastUsedId: number;
@@ -133,6 +138,61 @@ const geomObjsToMapObjs = (
 	return mapObjs;
 };
 
+const mergeUndoableUpd = (
+	upd1: UndoableUpd,
+	upd2: UndoableUpd
+): UndoableUpd => {
+	switch (upd1.t) {
+		case 'pos': {
+			if (upd2.t != 'pos') {
+				throw new Error('upd2 must be of type pos');
+			}
+			return {
+				...upd2,
+				oldPos: upd1.oldPos,
+			};
+		}
+		case 'geodesicDestPt': {
+			if (upd2.t != 'geodesicDestPt') {
+				throw new Error('upd2 must be of type geodesicDestPt');
+			}
+			return {
+				...upd2,
+				oldTurnAngle: upd1.oldTurnAngle,
+				oldDist: upd1.oldDist,
+			};
+		}
+		default: {
+			throw new Error(`cannot merge into update of type ${upd1.t}`);
+		}
+	}
+};
+
+const addToHistory = (
+	appState: AppState,
+	upd: UndoableUpd
+): void => {
+	if (appState.updHistoryIndex < appState.updHistory.length) {
+		appState.updHistory.splice(appState.updHistoryIndex);
+	}
+	if (
+		appState.updHistoryAcceptMerge &&
+		appState.updHistory.length > 0
+	) {
+		const prevUpd = appState.updHistory[appState.updHistoryIndex - 1];
+		if (prevUpd == undefined) {
+			throw new Error('updHistoryIndex out of bounds');
+		}
+		if (prevUpd.t == upd.t) {
+			appState.updHistory[appState.updHistoryIndex - 1] =
+				mergeUndoableUpd(prevUpd, upd);
+			return;
+		}
+	}
+	appState.updHistory.push(upd);
+	appState.updHistoryIndex++;
+};
+
 const syncObjs = (appState: AppState): void => {
 	appState.mapObjs = geomObjsToMapObjs(appState.earth, appState.geomObjs);
 };
@@ -161,10 +221,11 @@ const validatePtRefUpd = (
 };
 
 const applyAlterGeodesicUpd = (
-	objIndex: number,
+	appState: AppState,
 	obj: GeomObjSpec,
 	upd: AlterGeodesicUpd,
-	appState: AppState
+	registerUndoableUpd: (undoableUpd: UndoableUpd) => void,
+	doUpdateUserState: boolean
 ): boolean => {
 	if (obj.t != 'geodesic') {
 		throw new Error('geom obj is not a geodesic obj');
@@ -174,38 +235,82 @@ const applyAlterGeodesicUpd = (
 			if (!validatePtRefUpd(upd, appState)) {
 				return false;
 			}
+			registerUndoableUpd({
+				...upd,
+				oldPtRef: obj.ptStart,
+			});
 			obj.ptStart = upd.newPtRef;
+			if (doUpdateUserState) {
+				appState.userState = (
+					appState.userState.t == 'geodesicStart' &&
+					appState.userState.doPtEndNext
+				) ? {
+					t: 'geodesicEnd',
+					uniqName: appState.userState.uniqName,
+				} : {
+					t: 'free',
+				};
+			}
 			return true;
 		}
 		case 'geodesicEnd': {
 			if (!validatePtRefUpd(upd, appState)) {
 				return false;
 			}
+			registerUndoableUpd({
+				...upd,
+				oldPtRef: obj.ptEnd,
+			});
 			obj.ptEnd = upd.newPtRef;
 			return true;
 		}
 		case 'geodesicUseFarArc': {
+			registerUndoableUpd({
+				...upd,
+				oldVal: obj.useFarArc,
+			});
 			obj.useFarArc = upd.newVal;
 			return true;
 		}
 		case 'geodesicDestPtEnabled': {
+			registerUndoableUpd({
+				...upd,
+				oldVal: obj.destPtEnabled,
+			});
 			obj.destPtEnabled = upd.newVal;
 			return true;
 		}
 		case 'geodesicDestPtTurnAngle': {
+			registerUndoableUpd({
+				...upd,
+				oldVal: obj.destPtTurnAngle,
+			});
 			obj.destPtTurnAngle = upd.newVal;
 			return true;
 		}
 		case 'geodesicDestPtDist': {
+			registerUndoableUpd({
+				...upd,
+				oldVal: obj.destPtDist,
+			});
 			obj.destPtDist = upd.newVal;
 			return true;
 		}
 		case 'geodesicDestPt': {
+			registerUndoableUpd({
+				...upd,
+				oldTurnAngle: obj.destPtTurnAngle,
+				oldDist: obj.destPtDist,
+			});
 			obj.destPtTurnAngle = upd.newTurnAngle;
 			obj.destPtDist = upd.newDist;
 			return true;
 		}
 		case 'geodesicDestPtMapLabel': {
+			registerUndoableUpd({
+				...upd,
+				oldVal: obj.destPtMapLabel,
+			});
 			obj.destPtMapLabel = upd.newVal;
 			return true;
 		}
@@ -214,8 +319,10 @@ const applyAlterGeodesicUpd = (
 };
 
 const applyAlterUpd = (
+	appState: AppState,
 	upd: AlterUpd,
-	appState: AppState
+	registerUndoableUpd: (undoableUpd: UndoableUpd) => void,
+	doUpdateUserState: boolean
 ): boolean => {
 	const [objIndex, obj] = findGeomObjWithIndex(appState, upd.uniqName);
 	if (!obj) {
@@ -226,8 +333,7 @@ const applyAlterUpd = (
 
 	switch (upd.t) {
 		case 'name': {
-			// don't handle a conflict if the name is unchanged
-			if (upd.newName == upd.uniqName) {
+			if (upd.newName == '' || upd.newName == upd.uniqName) {
 				return false;
 			}
 			if (geomObjNameToString(upd.newName).includes('$')) {
@@ -242,6 +348,8 @@ const applyAlterUpd = (
 				return false;
 			}
 
+			registerUndoableUpd(upd);
+
 			// if the user has not changed the map label, then assume
 			// we still want to display the uniq name as the marker label
 			if (
@@ -253,12 +361,17 @@ const applyAlterUpd = (
 
 			renameRefs(appState.geomObjs, obj.uniqName, upd.newName);
 			obj.uniqName = upd.newName;
+
 			break;
 		}
 		case 'pos': {
 			if (obj.t != 'point') {
 				throw new Error('cannot update pos of non-point geom obj');
 			}
+			registerUndoableUpd({
+				...upd,
+				oldPos: obj.pos,
+			});
 			obj.pos = upd.newPos;
 			break;
 		}
@@ -266,6 +379,10 @@ const applyAlterUpd = (
 			if (obj.t != 'point') {
 				throw new Error('cannot update map label of non-point geom obj');
 			}
+			registerUndoableUpd({
+				...upd,
+				oldMapLabel: obj.mapLabel,
+			});
 			obj.mapLabel = upd.newMapLabel;
 			break;
 		}
@@ -277,7 +394,9 @@ const applyAlterUpd = (
 		case 'geodesicDestPtDist':
 		case 'geodesicDestPt':
 		case 'geodesicDestPtMapLabel': {
-			applyAlterGeodesicUpd(objIndex, obj, upd, appState);
+			applyAlterGeodesicUpd(
+				appState, obj, upd, registerUndoableUpd, doUpdateUserState
+			);
 			break;
 		}
 		default: {
@@ -317,12 +436,25 @@ const renameRefs = (
 const applyUpd = (
 	appState: AppState,
 	upd: StateUpd,
-	doSync: boolean = true
+	doSync: boolean = true,
+	doAddToHistory: boolean = true,
+	doUpdateUserState: boolean = true
 ): boolean => {
+	const registerUndoableUpd = (undoableUpd: UndoableUpd) => {
+		if (doAddToHistory) {
+			addToHistory(appState, undoableUpd);
+		}
+	};
 	switch (upd.t)  {
 		case 'newPoint': {
-			const uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
+			const uniqName: GeomObjName = (upd.uniqName != undefined) ?
+				upd.uniqName :
+				newGeomObjName(`obj${appState.lastUsedId}`);
 			appState.lastUsedId++;
+			registerUndoableUpd({
+				...upd,
+				uniqName: uniqName,
+			});
 			appState.geomObjs.push({
 				t: 'point',
 				uniqName: uniqName,
@@ -332,8 +464,13 @@ const applyUpd = (
 			break;
 		}
 		case 'newGeodesic': {
-			const uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
+			const uniqName = (upd.uniqName != undefined) ? upd.uniqName :
+				newGeomObjName(`obj${appState.lastUsedId}`);
 			appState.lastUsedId++;
+			registerUndoableUpd({
+				...upd,
+				uniqName: uniqName,
+			});
 			appState.geomObjs.push({
 				t: 'geodesic',
 				uniqName: uniqName,
@@ -343,24 +480,34 @@ const applyUpd = (
 				destPtEnabled: false,
 				destPtTurnAngle: 0,
 				destPtDist: 0,
-				destPtMapLabel: uniqName,
+				destPtMapLabel: geomObjNameToString(uniqName),
 			});
-			appState.userState = {
-				t: 'geodesicStart',
-				uniqName: uniqName,
-				doPtEndNext: true,
-			};
+			if (doUpdateUserState) {
+				appState.userState = {
+					t: 'geodesicStart',
+					uniqName: uniqName,
+					doPtEndNext: true,
+				};
+			}
 			break;
 		}
 		case 'delete': {
-			renameRefs(appState.geomObjs, upd.uniqName, newGeomObjName(''));
-			appState.geomObjs = appState.geomObjs.filter((geomObj) => {
-				return geomObj.uniqName != upd.uniqName;
+			const [objIndex, obj] = findGeomObjWithIndex(appState, upd.uniqName);
+			if (!obj) {
+				throw new Error('cannot find object to delete');
+			}
+			registerUndoableUpd({
+				...upd,
+				deletedObjIndex: objIndex,
+				deletedObj: obj,
 			});
+			appState.geomObjs.splice(objIndex, 1);
 			break;
 		}
 		default: {
-			if (!applyAlterUpd(upd, appState)) {
+			if (!applyAlterUpd(
+				appState, upd, registerUndoableUpd, doUpdateUserState
+			)) {
 				return false;
 			}
 			break;
@@ -377,7 +524,8 @@ const updateMarkerPos = (
 	markerName: MapObjName,
 	geomObj: ResolvedGeomObjSpec,
 	pos: LatLngLiteral,
-	doSync: boolean = true
+	doSync: boolean = true,
+	doAddToHistory: boolean = true
 ) => {
 	switch (geomObj.t) {
 		case 'point': {
@@ -385,7 +533,7 @@ const updateMarkerPos = (
 				t: 'pos',
 				uniqName: geomObj.uniqName,
 				newPos: pos,
-			}, doSync);
+			}, doSync, doAddToHistory);
 			break;
 		}
 		case 'geodesic': {
@@ -400,7 +548,7 @@ const updateMarkerPos = (
 				uniqName: geomObj.uniqName,
 				newTurnAngle: destPtParams.turnAngle,
 				newDist: destPtParams.dist,
-			}, doSync);
+			}, doSync, doAddToHistory);
 			break;
 		}
 		default: {
@@ -422,9 +570,168 @@ const updateMarkerPos = (
 	}
 };
 
+const applyUndoAlterGeodesicUpd = (
+	appState: AppState,
+	obj: GeomObjSpec,
+	upd: UndoableAlterGeodesicUpd
+): void => {
+	if (obj.t != 'geodesic') {
+		throw new Error('geom obj is not a geodesic obj');
+	}
+	switch (upd.t) {
+		case 'geodesicStart': {
+			obj.ptStart = upd.oldPtRef;
+			break;
+		}
+		case 'geodesicEnd': {
+			obj.ptEnd = upd.oldPtRef;
+			break;
+		}
+		case 'geodesicUseFarArc': {
+			obj.useFarArc = upd.oldVal;
+			break;
+		}
+		case 'geodesicDestPtEnabled': {
+			obj.destPtEnabled = upd.oldVal;
+			break;
+		}
+		case 'geodesicDestPtTurnAngle': {
+			obj.destPtTurnAngle = upd.oldVal;
+			break;
+		}
+		case 'geodesicDestPtDist': {
+			obj.destPtDist = upd.oldVal;
+			break;
+		}
+		case 'geodesicDestPt': {
+			obj.destPtTurnAngle = upd.oldTurnAngle;
+			obj.destPtDist = upd.oldDist;
+			break;
+		}
+		case 'geodesicDestPtMapLabel': {
+			obj.destPtMapLabel = upd.oldVal;
+			break;
+		}
+		default: {
+			assertUnhandledType(upd);
+		}
+	}
+};
+
+const applyUndoAlterUpd = (
+	appState: AppState,
+	upd: UndoableAlterUpd
+): void => {
+	const [objIndex, obj] = findGeomObjWithIndex(
+		appState, (upd.t == 'name') ? upd.newName : upd.uniqName
+	);
+	if (!obj) {
+		throw new Error(
+			`could not find geom obj with name ${upd.uniqName}`
+		);
+	}
+	switch (upd.t) {
+		case 'name': {
+			renameRefs(appState.geomObjs, upd.newName, upd.uniqName);
+			obj.uniqName = upd.uniqName;
+			break;
+		}
+		case 'pos': {
+			if (obj.t != 'point') {
+				throw new Error('cannot update pos of non-point geom obj');
+			}
+			obj.pos = upd.oldPos;
+			break;
+		}
+		case 'mapLabel': {
+			if (obj.t != 'point') {
+				throw new Error('cannot update map label of non-point geom obj');
+			}
+			obj.mapLabel = upd.oldMapLabel;
+			break;
+		}
+		case 'geodesicStart':
+		case 'geodesicEnd':
+		case 'geodesicUseFarArc':
+		case 'geodesicDestPtEnabled':
+		case 'geodesicDestPtTurnAngle':
+		case 'geodesicDestPtDist':
+		case 'geodesicDestPt':
+		case 'geodesicDestPtMapLabel': {
+			applyUndoAlterGeodesicUpd(
+				appState, obj, upd
+			);
+			break;
+		}
+		default: {
+			assertUnhandledType(upd);
+		}
+	}
+};
+
+const applyUndoNoSync = (
+	appState: AppState
+): void => {
+	if (appState.updHistory.length == 0) {
+		throw new Error('nothing to undo');
+	}
+
+	appState.updHistoryIndex--;
+	const upd = appState.updHistory[appState.updHistoryIndex];
+	if (upd == undefined) {
+		throw new Error('updHistoryIndex out of bounds');
+	}
+
+	switch (upd.t) {
+		case 'newPoint':
+		case 'newGeodesic': {
+			appState.geomObjs = appState.geomObjs.filter((geomObj) => {
+				return geomObj.uniqName != upd.uniqName;
+			});
+			break;
+		}
+		case 'delete': {
+			appState.geomObjs.splice(upd.deletedObjIndex, 0, upd.deletedObj);
+			break;
+		}
+		default: {
+			applyUndoAlterUpd(appState, upd);
+		}
+	}
+};
+
+const applyUndo = (
+	appState: AppState
+): void => {
+	applyUndoNoSync(appState);
+	syncObjs(appState);
+};
+
+const applyRedo = (
+	appState: AppState
+): void => {
+	const upd = appState.updHistory[appState.updHistoryIndex];
+	appState.updHistoryIndex++;
+	if (upd == undefined) {
+		throw new Error('updHistoryIndex out of bounds');
+	}
+	applyUpd(appState, upd, true, false, false);
+};
+
+const startNewAction = (
+	appState: AppState
+) => {
+	appState.errMsg = null;
+	appState.updHistoryAcceptMerge = appState.updHistoryNextAcceptMerge;
+	appState.updHistoryNextAcceptMerge = false;
+};
+
 const AppStateReducer = {
+	startNewAction: startNewAction,
 	applyUpd: applyUpd,
 	updateMarkerPos: updateMarkerPos,
+	applyUndo: applyUndo,
+	applyRedo: applyRedo,
 };
 
 export type { AppState };
