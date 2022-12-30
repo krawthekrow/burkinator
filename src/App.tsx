@@ -16,7 +16,7 @@ import { StateUpd } from './StateUpd';
 import { UserState } from './UserState';
 import {
 	AppState, AppStateReducer,
-	geomObjsToMapObjs,
+	geomObjsToMapObjs, genUniqName,
 } from './AppState';
 import MapView, { MapObjSpec } from './MapView';
 import ObjsEditorView from './ObjsEditorView';
@@ -474,14 +474,53 @@ const App = (): JSX.Element => {
 
 	const handleMapClick = (pos: LatLngLiteral) => {
 		setAppState((draftAppState) => {
+			const userState = draftAppState.userState;
 			AppStateReducer.startNewAction(draftAppState);
-			if (draftAppState.userState.t != 'free') {
-				return;
+			switch (userState.t) {
+				case 'free': {
+					AppStateReducer.applyUpd(draftAppState, {
+						t: 'newPoint',
+						pos: pos,
+					});
+					break;
+				}
+				case 'geodesicStart': {
+					const newPtName = genUniqName(draftAppState);
+					AppStateReducer.applyUpd(draftAppState, {
+						t: 'newPoint',
+						uniqName: newPtName,
+						pos: pos,
+						insertBeforeUniqName: userState.uniqName,
+					});
+					AppStateReducer.applyUpd(draftAppState, {
+						t: 'geodesicStart',
+						uniqName: userState.uniqName,
+						newPtRef: newPtName,
+					});
+					break;
+				}
+				case 'geodesicEnd': {
+					const newPtName = genUniqName(draftAppState);
+					AppStateReducer.applyUpd(draftAppState, {
+						t: 'newPoint',
+						uniqName: newPtName,
+						pos: pos,
+						insertBeforeUniqName: userState.uniqName,
+					});
+					AppStateReducer.applyUpd(draftAppState, {
+						t: 'geodesicEnd',
+						uniqName: userState.uniqName,
+						newPtRef: newPtName,
+					});
+					break;
+				}
+				case 'more': {
+					break;
+				}
+				default: {
+					assertUnhandledType(userState);
+				}
 			}
-			AppStateReducer.applyUpd(draftAppState, {
-				t: 'newPoint',
-				pos: pos,
-			});
 		});
 	};
 
@@ -521,7 +560,7 @@ const App = (): JSX.Element => {
 			const userState = draftAppState.userState;
 			switch (userState.t) {
 				case 'geodesicStart': {
-					const updSuccess = AppStateReducer.applyUpd(draftAppState, {
+					AppStateReducer.applyUpd(draftAppState, {
 						t: 'geodesicStart',
 						uniqName: userState.uniqName,
 						newPtRef: geomObj.uniqName,
@@ -529,16 +568,11 @@ const App = (): JSX.Element => {
 					break;
 				}
 				case 'geodesicEnd': {
-					const updSuccess = AppStateReducer.applyUpd(draftAppState, {
+					AppStateReducer.applyUpd(draftAppState, {
 						t: 'geodesicEnd',
 						uniqName: userState.uniqName,
 						newPtRef: geomObj.uniqName,
 					});
-					if (updSuccess) {
-						draftAppState.userState = {
-							t: 'free',
-						};
-					}
 					break;
 				}
 			}
@@ -551,7 +585,10 @@ const App = (): JSX.Element => {
 	) => {
 		setAppState((draftAppState) => {
 			AppStateReducer.startNewAction(draftAppState);
-			// TODO: remove marker
+			AppStateReducer.applyUpd(draftAppState, {
+				t: 'delete',
+				uniqName: geomObj.uniqName,
+			});
 		});
 	};
 
@@ -629,6 +666,7 @@ const App = (): JSX.Element => {
 	const handleImport = (newObjs: GeomObjSpec[]): void => {
 		setAppState((draftAppState) => {
 			AppStateReducer.mergeObjs(draftAppState, newObjs);
+			AppStateReducer.resetUpdHistory(draftAppState);
 		});
 	};
 

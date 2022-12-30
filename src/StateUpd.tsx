@@ -2,9 +2,13 @@ import { GeomObjName, GeomObjSpec } from './GeomObj';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
-type NewPointUpd = {
-	t: 'newPoint';
+type NewObjUpdBase = {
 	uniqName?: GeomObjName;
+	insertBeforeUniqName?: GeomObjName;
+};
+
+type NewPointUpd = NewObjUpdBase & {
+	t: 'newPoint';
 	pos: LatLngLiteral;
 };
 
@@ -12,9 +16,8 @@ type UndoableNewPointUpd = NewPointUpd & {
 	uniqName: GeomObjName;
 };
 
-type NewGeodesicUpd = {
+type NewGeodesicUpd = NewObjUpdBase & {
 	t: 'newGeodesic';
-	uniqName?: GeomObjName;
 };
 
 type UndoableNewGeodesicUpd = NewGeodesicUpd & {

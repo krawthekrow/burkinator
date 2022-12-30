@@ -148,6 +148,14 @@ const startNewAction = (
 	appState.updHistoryNextAcceptMerge = false;
 };
 
+const resetUpdHistory = (
+	appState: AppState
+) => {
+	appState.updHistory = [];
+	appState.updHistoryIndex = 0;
+	appState.updHistoryNextAcceptMerge = false;
+};
+
 const mergeUndoableUpd = (
 	upd1: UndoableUpd,
 	upd2: UndoableUpd
@@ -250,11 +258,8 @@ const applyAlterGeodesicUpd = (
 				oldPtRef: obj.ptStart,
 			});
 			obj.ptStart = upd.newPtRef;
-			if (doUpdateUserState) {
-				appState.userState = (
-					appState.userState.t == 'geodesicStart' &&
-					appState.userState.doPtEndNext
-				) ? {
+			if (doUpdateUserState && appState.userState.t == 'geodesicStart') {
+				appState.userState = appState.userState.doPtEndNext ? {
 					t: 'geodesicEnd',
 					uniqName: appState.userState.uniqName,
 				} : {
@@ -272,6 +277,11 @@ const applyAlterGeodesicUpd = (
 				oldPtRef: obj.ptEnd,
 			});
 			obj.ptEnd = upd.newPtRef;
+			if (doUpdateUserState && appState.userState.t == 'geodesicEnd') {
+				appState.userState = {
+					t: 'free',
+				};
+			}
 			return true;
 		}
 		case 'geodesicUseFarArc': {
@@ -434,6 +444,12 @@ const renameRefs = (
 	}
 };
 
+const genUniqName = (appState: AppState): GeomObjName => {
+	const uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
+	appState.lastUsedId++;
+	return uniqName;
+};
+
 const applyUpd = (
 	appState: AppState,
 	upd: StateUpd,
@@ -446,33 +462,47 @@ const applyUpd = (
 			addToHistory(appState, undoableUpd);
 		}
 	};
+	const doInsert = (
+		obj: GeomObjSpec,
+		insertBeforeUniqName: GeomObjName | undefined
+	) => {
+		if (insertBeforeUniqName == undefined) {
+			appState.geomObjs.push(obj);
+		}
+		else {
+			const insertIndex = appState.geomObjs.findIndex((oObj) => {
+				return oObj.uniqName == insertBeforeUniqName;
+			});
+			if (insertIndex == -1) {
+				throw new Error(`name ${insertBeforeUniqName} not found`);
+			}
+			appState.geomObjs.splice(insertIndex, 0, obj);
+		}
+	};
 	switch (upd.t)  {
 		case 'newPoint': {
 			const uniqName: GeomObjName = (upd.uniqName != undefined) ?
-				upd.uniqName :
-				newGeomObjName(`obj${appState.lastUsedId}`);
-			appState.lastUsedId++;
+				upd.uniqName : genUniqName(appState);
 			registerUndoableUpd({
 				...upd,
 				uniqName: uniqName,
 			});
-			appState.geomObjs.push({
+			doInsert({
 				t: 'point',
 				uniqName: uniqName,
 				pos: {lat: upd.pos.lat, lng: upd.pos.lng},
 				mapLabel: '',
-			});
+			}, upd.insertBeforeUniqName);
 			break;
 		}
 		case 'newGeodesic': {
-			const uniqName = (upd.uniqName != undefined) ? upd.uniqName :
-				newGeomObjName(`obj${appState.lastUsedId}`);
-			appState.lastUsedId++;
+			const uniqName = (upd.uniqName != undefined) ?
+				upd.uniqName : genUniqName(appState);
 			registerUndoableUpd({
 				...upd,
 				uniqName: uniqName,
 			});
-			appState.geomObjs.push({
+			doInsert({
 				t: 'geodesic',
 				uniqName: uniqName,
 				ptStart: newGeomObjName(''),
@@ -482,7 +512,7 @@ const applyUpd = (
 				destPtTurnAngle: 0,
 				destPtDist: 0,
 				destPtMapLabel: geomObjNameToString(uniqName),
-			});
+			}, upd.insertBeforeUniqName);
 			if (doUpdateUserState) {
 				appState.userState = {
 					t: 'geodesicStart',
@@ -754,6 +784,7 @@ const mergeObjs = (
 
 const AppStateReducer = {
 	startNewAction: startNewAction,
+	resetUpdHistory: resetUpdHistory,
 	applyUpd: applyUpd,
 	updateMarkerPos: updateMarkerPos,
 	applyUndo: applyUndo,
@@ -767,4 +798,5 @@ export {
 	findGeomObjWithIndex,
 	findGeomObj,
 	geomObjsToMapObjs,
+	genUniqName,
 };
