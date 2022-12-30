@@ -137,7 +137,7 @@
 .api-key-row {
 	display: flex;
 	width: 100%;
-	margin-bottom: 0.6rem;
+	margin: 0.2rem 0 0.8rem 0;
 }
 
 .api-key-cell-label {

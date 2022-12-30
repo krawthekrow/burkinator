@@ -430,6 +430,9 @@ const MoreFeaturesModal = (
 
 	return <div className="modal">
 		<div className="modal-pane">
+			<div>
+				<h3>Google Maps API key</h3>
+			</div>
 			<div className="api-key-row">
 				<div className="api-key-cell-input">
 					<input
@@ -446,6 +449,10 @@ const MoreFeaturesModal = (
 						Set API key
 					</button>
 				</div>
+			</div>
+			<div>
+				<h3>Import/Export</h3>
+				<p>Note: You can also import points just by specifying, for each point, a latitude, longitude, and optionally a label.</p>
 			</div>
 			<div>
 				<textarea
