@@ -538,7 +538,7 @@ const App = (): JSX.Element => {
 			apiKey = localStorage.getItem('__burkinator_apiKey');
 		}
 		catch { }
-		if (apiKey == null || apiKey == '') {
+		if (apiKey == null) {
 			apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 		}
 		if (apiKey == null) {
