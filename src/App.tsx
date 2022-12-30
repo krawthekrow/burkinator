@@ -114,8 +114,8 @@ const stringifyGeomObjs = (geomObjs: GeomObjSpec[]): string => {
 					const entries = [
 						'G',
 						geomObj.uniqName,
-						geomObj.ptStart,
-						geomObj.ptEnd,
+						(geomObj.ptStart == '') ? '$' : geomObj.ptStart,
+						(geomObj.ptEnd == '') ? '$' : geomObj.ptEnd,
 						geomObj.useFarArc ? 'far' : 'near',
 					];
 					if (geomObj.destPtEnabled) {
@@ -229,14 +229,20 @@ const parseGeomObjs = (appState: AppState, spec: string): [
 				break;
 			}
 			case 'G': {
-				const ptStart = params.shift();
+				let ptStart = params.shift();
 				if (ptStart == undefined) {
 					return makeErrRet('start point missing');
 				}
+				if (ptStart == '$') {
+					ptStart = '';
+				}
 
-				const ptEnd = params.shift();
+				let ptEnd = params.shift();
 				if (ptEnd == undefined) {
 					return makeErrRet('end point missing');
+				}
+				if (ptEnd == '$') {
+					ptStart = '';
 				}
 
 				const useFarArcVal = params.shift();
@@ -393,14 +399,11 @@ const loadState = (appState: AppState): GeomObjSpec[] => {
 		importStrRaw = localStorage.getItem('__burkinator_state');
 	} catch { }
 	if (importStrRaw == null) {
-		return [];
+		// no saved state; use initial sample data
+		importStr = 'v0.1\nP\tobj5\t11.725384459061823\t-2.0012229261396275\tH\nP\tobj6\t-32.916978560354714\t-55.937791024638614\tI\nG\tobj4\tobj5\tobj6\tnear\nP\tobj8\t45.75979893594823\t25.04040783555398\tP\nG\tobj7\tobj6\tobj8\tnear\nP\tobj10\t1.8429791650053304\t-157.3915042181933\tU\nG\tobj9\tobj8\tobj10\tnear\nP\tobj12\t32.93790942634668\t42.66835104582444\tZ\nG\tobj11\tobj10\tobj12\tnear\nP\tobj14\t17.584579687927402\t10.060929170824439\tZ\nG\tobj13\tobj12\tobj14\tnear\nP\tobj16\t-12.186232267617358\t17.97108542082444\tL\nG\tobj15\tobj14\tobj16\tnear\nP\tobj18\t-7.07556349812708\t35.10975729582444\tE\nG\tobj17\tobj16\tobj18\tnear\nP\tobj20\t19.702166441496587\t55.91172922600376\tR\nG\tobj19\tobj18\tobj20\tnear\nP\tobj22\t-1.8841461608329453\t29.84568563177587\tS\nG\tobj21\tobj20\tobj22\tnear';
 	}
-
-	try {
+	else {
 		importStr = JSON.parse(importStrRaw);
-	} catch { }
-	if (importStr == '') {
-		return [];
 	}
 
 	const [importErr, geomObjs] = parseGeomObjs(appState, importStr);
@@ -528,31 +531,6 @@ const MoreFeaturesModal = (
 };
 
 const App = (): JSX.Element => {
-	const initObjs: GeomObjSpec[] = [
-		{
-			t: 'point',
-			uniqName: newGeomObjName('m1'),
-			pos: {lat: -25.344, lng: 131.031},
-			mapLabel: 'M1',
-		},
-		{
-			t: 'point',
-			uniqName: newGeomObjName('m2'),
-			pos: {lat: -35.344, lng: 140.031},
-			mapLabel: 'M2',
-		},
-		{
-			t: 'geodesic',
-			uniqName: newGeomObjName('g1'),
-			ptStart: newGeomObjName('m1'),
-			ptEnd: newGeomObjName('m2'),
-			useFarArc: false,
-			destPtEnabled: true,
-			destPtTurnAngle: 0.1,
-			destPtDist: 1000,
-			destPtMapLabel: 'G1',
-		},
-	];
 	const initEarth = DEFAULT_EARTH_MODEL;
 	const [appState, setAppState] = useImmer<AppState>(() => {
 		let apiKey: string | null = null;
@@ -574,8 +552,8 @@ const App = (): JSX.Element => {
 			updHistoryIndex: 0,
 			updHistoryAcceptMerge: false,
 			updHistoryNextAcceptMerge: false,
-			geomObjs: initObjs,
-			mapObjs: geomObjsToMapObjs(initEarth, initObjs),
+			geomObjs: [],
+			mapObjs: [],
 			// last used id to assign each object a unique default name
 			lastUsedId: 0,
 			mapCenter: {lat: 0, lng: 0},

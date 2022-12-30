@@ -77,7 +77,7 @@ const geomObjsToMapObjs = (
 					uniqName: newMapObjName(geomObj.uniqName),
 					geomObj: geomObj,
 					pos: geomObj.pos,
-					mapLabel: geomObj.mapLabel ?
+					mapLabel: (geomObj.mapLabel == '') ?
 						geomObj.uniqName : geomObj.mapLabel,
 				});
 				break;
