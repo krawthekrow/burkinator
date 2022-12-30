@@ -6,6 +6,7 @@ type UserStateFree = {
 
 type UserStateMoreFeatures = {
 	t: 'more';
+	importErr: string;
 };
 
 type UserStateSelectGeodesicStart = {

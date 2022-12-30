@@ -356,9 +356,9 @@ const applyAlterUpd = (
 			if (upd.newName.trim() == '' || upd.newName == upd.uniqName) {
 				return false;
 			}
-			if (geomObjNameToString(upd.newName).includes('$')) {
-				// "$" is used as a special character for mapObj names
-				appState.errMsg = `name cannot contain "$"`;
+			const uniqNameErr = validateUniqName(upd.newName);
+			if (uniqNameErr) {
+				appState.errMsg = uniqNameErr;
 				return false;
 			}
 
@@ -461,6 +461,14 @@ const genUniqName = (appState: AppState): GeomObjName => {
 		}
 	}
 	return uniqName;
+};
+
+const validateUniqName = (uniqName: string): string | null => {
+	if (uniqName.includes('$')) {
+		// "$" is used as a special character for mapObj names
+		return `name cannot contain "$"`;
+	}
+	return null;
 };
 
 const applyUpd = (
@@ -835,4 +843,5 @@ export {
 	findGeomObj,
 	geomObjsToMapObjs,
 	genUniqName,
+	validateUniqName,
 };

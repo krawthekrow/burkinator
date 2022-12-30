@@ -16,7 +16,7 @@ import { StateUpd } from './StateUpd';
 import { UserState } from './UserState';
 import {
 	AppState, AppStateReducer,
-	geomObjsToMapObjs, genUniqName,
+	geomObjsToMapObjs, genUniqName, validateUniqName,
 } from './AppState';
 import MapView, { MapObjSpec } from './MapView';
 import ObjsEditorView from './ObjsEditorView';
@@ -134,7 +134,7 @@ const stringifyGeomObjs = (geomObjs: GeomObjSpec[]): string => {
 		}).join('\n');
 };
 
-const parseGeomObjs = (spec: string): [
+const parseGeomObjs = (appState: AppState, spec: string): [
 	string | null, GeomObjSpec[] | null
 ] => {
 	const lines = spec.split('\n');
@@ -147,8 +147,14 @@ const parseGeomObjs = (spec: string): [
 	if (versionLine == undefined) {
 		return ['version line missing', null];
 	}
-	if (versionLine != `v${APP_VERSION}`) {
-		return [`wrong version; current version is ${APP_VERSION}`, null];
+	if (versionLine[0] == 'v') {
+		if (versionLine != `v${APP_VERSION}`) {
+			return [`wrong version; current version is ${APP_VERSION}`, null];
+		}
+	}
+	else {
+		// put the line back; assume version line was omitted
+		lines.splice(0, 0, versionLine);
 	}
 
 	const makeErrRet = (errMsg: string): [
@@ -173,9 +179,16 @@ const parseGeomObjs = (spec: string): [
 			continue;
 		}
 
-		const uniqName = params.shift();
+		let uniqName = params.shift();
 		if (uniqName == undefined) {
 			return makeErrRet('name missing');
+		}
+		if (uniqName == '$') {
+			uniqName = genUniqName(appState);
+		}
+		const uniqNameErr = validateUniqName(uniqName);
+		if (uniqNameErr) {
+			return makeErrRet(uniqNameErr);
 		}
 
 		switch (kindEncoded) {
@@ -184,23 +197,27 @@ const parseGeomObjs = (spec: string): [
 				if (latVal == undefined) {
 					return makeErrRet(`no lat provided`);
 				}
-				const lat = parseFloat(latVal);
+				const lat = Number(latVal);
 				if (isNaN(lat)) {
-					return makeErrRet(`unable to parse lat ${latVal}`);
+					return makeErrRet(`unable to parse lat "${latVal}"`);
 				}
 
 				const lngVal = params.shift();
 				if (lngVal == undefined) {
 					return makeErrRet(`no lng provided`);
 				}
-				const lng = parseFloat(lngVal);
+				const lng = Number(lngVal);
 				if (isNaN(lng)) {
-					return makeErrRet(`unable to parse lng ${lngVal}`);
+					return makeErrRet(`unable to parse lng "${lngVal}"`);
 				}
 
 				let mapLabel = params.shift();
 				if (mapLabel == undefined) {
 					mapLabel = '';
+				}
+
+				if (params.length > 0) {
+					return makeErrRet(`too many params`);
 				}
 
 				geomObjs.push({
@@ -250,10 +267,10 @@ const parseGeomObjs = (spec: string): [
 				const destPtTurnAngleVal = params.shift();
 				if (destPtTurnAngleVal != undefined) {
 					destPtEnabled = true;
-					destPtTurnAngle = parseFloat(destPtTurnAngleVal);
+					destPtTurnAngle = Number(destPtTurnAngleVal);
 					if (isNaN(destPtTurnAngle)) {
 						return makeErrRet(
-							`unable to parse dest pt turn angle ${destPtTurnAngle}`
+							`unable to parse dest pt turn angle "${destPtTurnAngle}"`
 						);
 					}
 
@@ -261,10 +278,10 @@ const parseGeomObjs = (spec: string): [
 					if (destPtDistVal == undefined) {
 						return makeErrRet(`no dest pt distance provided`);
 					}
-					destPtDist = parseFloat(destPtDistVal);
+					destPtDist = Number(destPtDistVal);
 					if (isNaN(destPtDist)) {
 						return makeErrRet(
-							`unable to parse dest pt distance ${destPtDistVal}`
+							`unable to parse dest pt distance "${destPtDistVal}"`
 						);
 					}
 
@@ -272,6 +289,10 @@ const parseGeomObjs = (spec: string): [
 					if (destPtMapLabel == undefined) {
 						destPtMapLabel = '';
 					}
+				}
+
+				if (params.length > 0) {
+					return makeErrRet(`too many params`);
 				}
 
 				geomObjs.push({
@@ -287,8 +308,69 @@ const parseGeomObjs = (spec: string): [
 				});
 				break;
 			}
-			default:  {
-				return makeErrRet(`invalid kind "${kindEncoded}"`);
+			default: {
+				// assume it's a point
+				const param1 = kindEncoded;
+				const param2 = uniqName;
+				const param3 = params.shift();
+				const param4 = params.shift();
+				let lat: number;
+				let lng: number;
+				let latVal: string;
+				let lngVal: string;
+				let mapLabel: string;
+
+				if (params.length > 0) {
+					return makeErrRet(`too many params (raw point)`);
+				}
+
+				if (
+					param3 == undefined || (
+						!isNaN(Number(param1)) &&
+						isNaN(Number(param3))
+					)
+				) {
+					// assume no uniqName provided
+					uniqName = genUniqName(appState);
+					latVal = param1;
+					lngVal = param2;
+					mapLabel = (param3 == undefined) ? '' : param3;
+				}
+				else {
+					if (param3 == undefined) {
+						return makeErrRet(`no lng provided`);
+					}
+
+					uniqName = param1;
+					latVal = param2;
+					lngVal = param3;
+					mapLabel = (param4 == undefined) ? '' : param4;
+
+					if (uniqName == '$') {
+						uniqName = genUniqName(appState);
+					}
+				}
+
+				lat = Number(latVal);
+				lng = Number(lngVal);
+				if (isNaN(lat)) {
+					return makeErrRet(`unable to parse lat "${latVal}"`);
+				}
+				if (isNaN(lng)) {
+					return makeErrRet(`unable to parse lng "${lngVal}"`);
+				}
+
+				const newUniqNameErr = validateUniqName(uniqName);
+				if (newUniqNameErr) {
+					return makeErrRet(newUniqNameErr);
+				}
+
+				geomObjs.push({
+					t: 'point',
+					uniqName: newGeomObjName(uniqName),
+					pos: { lat: lat, lng: lng },
+					mapLabel: mapLabel,
+				});
 			}
 		}
 	}
@@ -298,13 +380,12 @@ const parseGeomObjs = (spec: string): [
 const MoreFeaturesModal = (
 	{appState, onImport, onDone}: {
 		appState: AppState,
-		onImport: (newObjs: GeomObjSpec[]) => void,
+		onImport: (importStr: string) => void,
 		onDone: () => void,
 	}
 ): JSX.Element | null => {
 	const apiKeyRef = useRef<HTMLInputElement>(null);
 	const [exportText, setExportText] = useState('');
-	const [errMsg, setErrMsg] = useState('');
 
 	useEffect(() => {
 		if (appState.userState.t == 'more') {
@@ -333,26 +414,18 @@ const MoreFeaturesModal = (
 	};
 
 	const handleImport = (): void => {
-		const [importErr, newObjs] = parseGeomObjs(exportText);
-		if (importErr == null) {
-			if (newObjs == null) {
-				throw new Error('newObjs should not be null if no error');
-			}
-			onImport(newObjs);
-		}
-		else {
-			setErrMsg(importErr);
-		}
+		onImport(exportText);
 	};
 
 	const handleExport = (): void => {
 		setExportText(stringifyGeomObjs(appState.geomObjs));
 	};
 
-	const importErrDom = (errMsg == '') ? null : <div
+	const importErr = appState.userState.importErr;
+	const importErrDom = (importErr == '') ? null : <div
 		className="import-err"
 	>
-		Error: { errMsg }
+		Error: { importErr }
 	</div>;
 
 	return <div className="modal">
@@ -621,6 +694,7 @@ const App = (): JSX.Element => {
 			AppStateReducer.startNewAction(draftAppState);
 			draftAppState.userState = {
 				t: 'more',
+				importErr: '',
 			};
 		});
 	};
@@ -655,11 +729,26 @@ const App = (): JSX.Element => {
 		});
 	};
 
-	const handleImport = (newObjs: GeomObjSpec[]): void => {
+	const handleImport = (importStr: string): void => {
 		setAppState((draftAppState) => {
-			const mergedObjs = AppStateReducer.applyMerge(
-				draftAppState, newObjs
+			if (draftAppState.userState.t != 'more') {
+				throw new Error('user should have more modal open');
+			}
+			const [importErr, newObjs] = parseGeomObjs(
+				draftAppState, importStr
 			);
+			if (importErr == null) {
+				if (newObjs == null) {
+					throw new Error('newObjs should not be null if no error');
+				}
+				AppStateReducer.applyMerge(
+					draftAppState, newObjs
+				);
+				draftAppState.userState.importErr = '';
+			}
+			else {
+				draftAppState.userState.importErr = importErr;
+			}
 		});
 	};
 
