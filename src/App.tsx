@@ -172,7 +172,7 @@ const parseGeomObjs = (appState: AppState, spec: string): [
 			break;
 		}
 
-		const params = line.trim().split(/\s+/);
+		const params = line.trim().split('\t');
 
 		const kindEncoded = params.shift();
 		if (kindEncoded == undefined || kindEncoded == '') {
