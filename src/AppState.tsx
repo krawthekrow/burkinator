@@ -77,7 +77,7 @@ const geomObjsToMapObjs = (
 					uniqName: newMapObjName(geomObj.uniqName),
 					geomObj: geomObj,
 					pos: geomObj.pos,
-					mapLabel: (geomObj.mapLabel.trim() == '') ?
+					mapLabel: geomObj.mapLabel ?
 						geomObj.uniqName : geomObj.mapLabel,
 				});
 				break;
@@ -92,7 +92,8 @@ const geomObjsToMapObjs = (
 						uniqName: newMapObjName(`${geomObj.uniqName}$pt`),
 						geomObj: geomObj,
 						pos: geomObj.destPtPos,
-						mapLabel: geomObj.destPtMapLabel,
+						mapLabel: (geomObj.destPtMapLabel == '') ?
+							geomObj.uniqName : geomObj.destPtMapLabel,
 					});
 					if (destPtStartPos == null) {
 						throw new Error('pos should only be defined if startPos is defined');
@@ -331,7 +332,7 @@ const applyAlterGeodesicUpd = (
 				...upd,
 				oldVal: obj.destPtMapLabel,
 			});
-			obj.destPtMapLabel = upd.newVal;
+			obj.destPtMapLabel = upd.newVal.trim();
 			return true;
 		}
 	}
@@ -394,7 +395,7 @@ const applyAlterUpd = (
 				...upd,
 				oldMapLabel: obj.mapLabel,
 			});
-			obj.mapLabel = upd.newMapLabel;
+			obj.mapLabel = upd.newMapLabel.trim();
 			break;
 		}
 		case 'geodesicStart':
