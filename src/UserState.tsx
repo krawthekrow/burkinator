@@ -4,6 +4,10 @@ type UserStateFree = {
 	t: 'free';
 };
 
+type UserStateMoreFeatures = {
+	t: 'more';
+};
+
 type UserStateSelectGeodesicStart = {
 	t: 'geodesicStart';
 	uniqName: GeomObjName;
@@ -22,7 +26,8 @@ type UserStateSelectPt =
 
 type UserState =
 	UserStateFree |
-	UserStateSelectPt
+	UserStateSelectPt |
+	UserStateMoreFeatures
 ;
 
 export type {

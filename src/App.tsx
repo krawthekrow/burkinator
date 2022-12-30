@@ -5,6 +5,9 @@ import './App.css'
 import { assertUnhandledType } from './Misc';
 import { DEFAULT_EARTH_MODEL } from './EarthModel';
 import {
+	ReactiveTextInput, ReactiveCheckbox, ReactiveButtonGroup
+} from './ReactiveFormComponents';
+import {
 	GeomObjName, GeomObjSpec, ResolvedGeomObjSpec,
 	newGeomObjName,
 } from './GeomObj';
@@ -20,12 +23,15 @@ import ObjsEditorView from './ObjsEditorView';
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
+const APP_VERSION = '0.1';
+
 const Toolbar = (
-	{appState, onUpdate, onUndo, onRedo, onCancel}: {
+	{appState, onUpdate, onUndo, onRedo, onMore, onCancel}: {
 		appState: AppState,
 		onUpdate: (upd: StateUpd) => void,
 		onUndo: () => void,
 		onRedo: () => void,
+		onMore: () => void,
 		onCancel: () => void,
 	}
 ): JSX.Element => {
@@ -60,6 +66,12 @@ const Toolbar = (
 		onCancel();
 	};
 
+	const handleClickMore = (
+		e: React.MouseEvent<HTMLButtonElement>
+	) => {
+		onMore();
+	};
+
 	const cancelButtonDom = [
 		'geodesicStart', 'geodesicEnd',
 	].includes(userState.t) ? <button
@@ -86,8 +98,318 @@ const Toolbar = (
 			disabled={userState.t != 'free' || !redoEnabled}
 			onClick={handleClickRedo}
 		>Redo</button>
+		<button
+			className="toolbar-button"
+			disabled={userState.t != 'free'}
+			onClick={handleClickMore}
+		>More...</button>
 		{ cancelButtonDom }
 	</>;
+};
+
+const stringifyGeomObjs = (geomObjs: GeomObjSpec[]): string => {
+	return `v${APP_VERSION}\n` +
+		geomObjs.map((geomObj) => {
+			switch (geomObj.t) {
+				case 'point': {
+					return [
+						'P',
+						geomObj.uniqName,
+						geomObj.pos.lat.toString(),
+						geomObj.pos.lng.toString(),
+						geomObj.mapLabel,
+					].join('\t');
+				}
+				case 'geodesic': {
+					const entries = [
+						'G',
+						geomObj.uniqName,
+						geomObj.ptStart,
+						geomObj.ptEnd,
+						geomObj.useFarArc ? 'far' : 'near',
+					];
+					if (geomObj.destPtEnabled) {
+						entries.push(
+							geomObj.destPtTurnAngle.toString(),
+							geomObj.destPtDist.toString(),
+							geomObj.destPtMapLabel,
+						);
+					}
+					return entries.join('\t');
+				}
+				default: {
+					assertUnhandledType(geomObj);
+				}
+			}
+		}).join('\n');
+};
+
+const parseGeomObjs = (spec: string): [
+	string | null, GeomObjSpec[] | null
+] => {
+	const lines = spec.split('\n');
+	let versionLine = undefined;
+	let lineNum = 0;
+	while (versionLine == undefined) {
+		versionLine = lines.shift();
+		lineNum++;
+	}
+	if (versionLine == undefined) {
+		return ['version line missing', null];
+	}
+	if (versionLine != `v${APP_VERSION}`) {
+		return [`wrong version; current version is ${APP_VERSION}`, null];
+	}
+
+	const makeErrRet = (errMsg: string): [
+		string, null
+	] => {
+		return [`line ${lineNum}: ${errMsg}`, null];
+	};
+
+	const geomObjs: GeomObjSpec[] = [];
+	while (true) {
+		const line = lines.shift();
+		lineNum++;
+
+		if (line == undefined) {
+			break;
+		}
+
+		const params = line.trim().split(/\s+/);
+
+		const kindEncoded = params.shift();
+		if (kindEncoded == undefined) {
+			continue;
+		}
+
+		const uniqName = params.shift();
+		if (uniqName == undefined) {
+			return makeErrRet('name missing');
+		}
+
+		switch (kindEncoded) {
+			case 'P': {
+				const latVal = params.shift();
+				if (latVal == undefined) {
+					return makeErrRet(`no lat provided`);
+				}
+				const lat = parseFloat(latVal);
+				if (isNaN(lat)) {
+					return makeErrRet(`unable to parse lat ${latVal}`);
+				}
+
+				const lngVal = params.shift();
+				if (lngVal == undefined) {
+					return makeErrRet(`no lng provided`);
+				}
+				const lng = parseFloat(lngVal);
+				if (isNaN(lng)) {
+					return makeErrRet(`unable to parse lng ${lngVal}`);
+				}
+
+				let mapLabel = params.shift();
+				if (mapLabel == undefined) {
+					mapLabel = '';
+				}
+
+				geomObjs.push({
+					t: 'point',
+					uniqName: newGeomObjName(uniqName),
+					pos: { lat: lat, lng: lng },
+					mapLabel: mapLabel,
+				});
+				break;
+			}
+			case 'G': {
+				const ptStart = params.shift();
+				if (ptStart == undefined) {
+					return makeErrRet('start point missing');
+				}
+
+				const ptEnd = params.shift();
+				if (ptEnd == undefined) {
+					return makeErrRet('end point missing');
+				}
+
+				const useFarArcVal = params.shift();
+				let useFarArc = false;
+				if (useFarArcVal != undefined) {
+					switch (useFarArcVal) {
+						case 'near': {
+							useFarArc = false;
+							break;
+						}
+						case 'far': {
+							useFarArc = true;
+							break;
+						}
+						default: {
+							return makeErrRet(
+								`invalid bool (useFarArc) "${useFarArcVal}"`
+							);
+						}
+					}
+				}
+
+				let destPtTurnAngle: number | undefined = 0;
+				let destPtDist: number | undefined = 0;
+				let destPtMapLabel: string | undefined = '';
+				let destPtEnabled = false;
+
+				const destPtTurnAngleVal = params.shift();
+				if (destPtTurnAngleVal != undefined) {
+					destPtEnabled = true;
+					destPtTurnAngle = parseFloat(destPtTurnAngleVal);
+					if (isNaN(destPtTurnAngle)) {
+						return makeErrRet(
+							`unable to parse dest pt turn angle ${destPtTurnAngle}`
+						);
+					}
+
+					const destPtDistVal = params.shift();
+					if (destPtDistVal == undefined) {
+						return makeErrRet(`no dest pt distance provided`);
+					}
+					destPtDist = parseFloat(destPtDistVal);
+					if (isNaN(destPtDist)) {
+						return makeErrRet(
+							`unable to parse dest pt distance ${destPtDistVal}`
+						);
+					}
+
+					destPtMapLabel = params.shift();
+					if (destPtMapLabel == undefined) {
+						destPtMapLabel = '';
+					}
+				}
+
+				geomObjs.push({
+					t: 'geodesic',
+					uniqName: newGeomObjName(uniqName),
+					ptStart: newGeomObjName(ptStart),
+					ptEnd: newGeomObjName(ptEnd),
+					useFarArc: useFarArc,
+					destPtEnabled: destPtEnabled,
+					destPtTurnAngle: destPtTurnAngle,
+					destPtDist: destPtDist,
+					destPtMapLabel: destPtMapLabel,
+				});
+				break;
+			}
+			default:  {
+				return makeErrRet(`invalid kind "${kindEncoded}"`);
+			}
+		}
+	}
+	return [null, geomObjs];
+};
+
+const MoreFeaturesModal = (
+	{appState, onImport, onDone}: {
+		appState: AppState,
+		onImport: (newObjs: GeomObjSpec[]) => void,
+		onDone: () => void,
+	}
+): JSX.Element | null => {
+	const apiKeyRef = useRef<HTMLInputElement>(null);
+	const [exportText, setExportText] = useState('');
+	const [errMsg, setErrMsg] = useState('');
+
+	useEffect(() => {
+		if (appState.userState.t == 'more') {
+			setExportText(stringifyGeomObjs(appState.geomObjs));
+		}
+	}, [appState.userState.t]);
+
+	const handleCommitApiKey = (): void => {
+		if (apiKeyRef.current != null) {
+			const newApiKey = apiKeyRef.current.value.trim();
+			if (appState.apiKey != newApiKey) {
+				localStorage.setItem('apiKey', newApiKey);
+				location.reload();
+			}
+		}
+	};
+
+	if (appState.userState.t != 'more') {
+		return null;
+	}
+
+	const handleChangeExportText = (
+		e: React.ChangeEvent<HTMLTextAreaElement>
+	): void => {
+		setExportText(e.target.value);
+	};
+
+	const handleImport = (): void => {
+		const [importErr, newObjs] = parseGeomObjs(exportText);
+		if (importErr == null) {
+			if (newObjs == null) {
+				throw new Error('newObjs should not be null if no error');
+			}
+			onImport(newObjs);
+		}
+		else {
+			setErrMsg(importErr);
+		}
+	};
+
+	const handleExport = (): void => {
+		setExportText(stringifyGeomObjs(appState.geomObjs));
+	};
+
+	const importErrDom = (errMsg == '') ? null : <div
+		className="import-err"
+	>
+		errMsg
+	</div>;
+
+	return <div className="modal">
+		<div className="modal-pane">
+			<div className="api-key-row">
+				<div className="api-key-cell-input">
+					<input
+						type="text"
+						className="api-key-input"
+						defaultValue={appState.apiKey}
+						ref={apiKeyRef}
+					/>
+				</div>
+				<div className="api-key-cell-label">
+					<button
+						onClick={handleCommitApiKey}
+					>
+						Set API key
+					</button>
+				</div>
+			</div>
+			<div>
+				<textarea
+					className="export-textarea"
+					value={exportText}
+					onChange={handleChangeExportText}
+				/>
+			</div>
+			{ importErrDom }
+			<div className="modal-buttons-pane">
+				<button
+					className="export-button"
+					onClick={handleImport}
+				>Import</button>
+				<button
+					className="export-button"
+					onClick={handleExport}
+				>Export</button>
+				<div className="modal-done-button-cell">
+					<button
+						className="export-button modal-done-button"
+						onClick={onDone}
+					>Done</button>
+				</div>
+			</div>
+		</div>
+	</div>;
 };
 
 const App = (): JSX.Element => {
@@ -117,20 +439,33 @@ const App = (): JSX.Element => {
 		},
 	];
 	const initEarth = DEFAULT_EARTH_MODEL;
-	const [appState, setAppState] = useImmer<AppState>({
-		earth: initEarth,
-		userState: { t: 'free' },
-		updHistory: [],
-		updHistoryIndex: 0,
-		updHistoryAcceptMerge: false,
-		updHistoryNextAcceptMerge: false,
-		geomObjs: initObjs,
-		mapObjs: geomObjsToMapObjs(initEarth, initObjs),
-		// last used id to assign each object a unique default name
-		lastUsedId: 0,
-		mapCenter: {lat: -25.344, lng: 131.031},
-		mapZoom: 4,
-		errMsg: null,
+	const [appState, setAppState] = useImmer<AppState>(() => {
+		let apiKey: string | null = null;
+		try {
+			apiKey = localStorage.getItem('apiKey');
+		}
+		catch (e) {
+		}
+		if (apiKey == null) {
+			apiKey = '';
+		}
+		return {
+			// don't enable production api access for now
+			apiKey: apiKey /* import.meta.env.VITE_GOOGLE_MAPS_API_KEY */,
+			earth: initEarth,
+			userState: { t: 'free' },
+			updHistory: [],
+			updHistoryIndex: 0,
+			updHistoryAcceptMerge: false,
+			updHistoryNextAcceptMerge: false,
+			geomObjs: initObjs,
+			mapObjs: geomObjsToMapObjs(initEarth, initObjs),
+			// last used id to assign each object a unique default name
+			lastUsedId: 0,
+			mapCenter: {lat: -25.344, lng: 131.031},
+			mapZoom: 4,
+			errMsg: null,
+		};
 	});
 
 	const renderErr = (status: Status) => {
@@ -252,6 +587,15 @@ const App = (): JSX.Element => {
 		});
 	};
 
+	const handleMore = () => {
+		setAppState((draftAppState) => {
+			AppStateReducer.startNewAction(draftAppState);
+			draftAppState.userState = {
+				t: 'more',
+			};
+		});
+	};
+
 	const handleCancel = () => {
 		setAppState((draftAppState) => {
 			AppStateReducer.startNewAction(draftAppState);
@@ -263,13 +607,28 @@ const App = (): JSX.Element => {
 					};
 					break;
 				}
-				case 'free': {
+				case 'free':
+				case 'more': {
 					throw new Error('nothing to cancel');
 				}
 				default: {
 					assertUnhandledType(draftAppState.userState);
 				}
 			}
+		});
+	};
+
+	const handleModalDone = (): void => {
+		setAppState((draftAppState) => {
+			draftAppState.userState = {
+				t: 'free',
+			};
+		});
+	};
+
+	const handleImport = (newObjs: GeomObjSpec[]): void => {
+		setAppState((draftAppState) => {
+			AppStateReducer.mergeObjs(draftAppState, newObjs);
 		});
 	};
 
@@ -283,7 +642,8 @@ const App = (): JSX.Element => {
 			instructionMsg = 'select ending point';
 			break;
 		}
-		case 'free': {
+		case 'free':
+		case 'more': {
 			break;
 		}
 		default: {
@@ -308,49 +668,56 @@ const App = (): JSX.Element => {
 	);
 
 	return <Wrapper
-		// don't enable production api access for now
-		apiKey={'' /* import.meta.env.VITE_GOOGLE_MAPS_API_KEY */}
+		apiKey={appState.apiKey}
 		render={renderErr}
 	>
-		<div className="toolbar-pane">
-			<Toolbar
-				appState={appState}
-				onUpdate={handleUpdate}
-				onUndo={handleUndo}
-				onRedo={handleRedo}
-				onCancel={handleCancel}
-			/>
-		</div>
-		<div className="main-pane">
-			<div className="map-pane">
-				<MapView
-					objs={appState.mapObjs}
-					center={appState.mapCenter}
-					zoom={appState.mapZoom}
-					markersDraggable={appState.userState.t == 'free'}
-					onMapClick={handleMapClick}
-					onMarkerDrag={handleMarkerDrag}
-					onMarkerDragEnd={handleMarkerDragEnd}
-					onMarkerClick={handleMarkerClick}
-					onMarkerRightClick={handleMarkerRightClick}
+		<div className="app-pane">
+			<div className="toolbar-pane">
+				<Toolbar
+					appState={appState}
+					onUpdate={handleUpdate}
+					onUndo={handleUndo}
+					onRedo={handleRedo}
+					onMore={handleMore}
+					onCancel={handleCancel}
 				/>
-				<div
-					className="notifs-pane"
-				>
-					{ instructionMsgDom }
-					{ errMsgDom }
+			</div>
+			<div className="main-pane">
+				<div className="map-pane">
+					<MapView
+						objs={appState.mapObjs}
+						center={appState.mapCenter}
+						zoom={appState.mapZoom}
+						markersDraggable={appState.userState.t == 'free'}
+						onMapClick={handleMapClick}
+						onMarkerDrag={handleMarkerDrag}
+						onMarkerDragEnd={handleMarkerDragEnd}
+						onMarkerClick={handleMarkerClick}
+						onMarkerRightClick={handleMarkerRightClick}
+					/>
+					<div
+						className="notifs-pane"
+					>
+						{ instructionMsgDom }
+						{ errMsgDom }
+					</div>
+				</div>
+				<div className="objs-editor-pane">
+					<ObjsEditorView
+						earth={appState.earth}
+						userState={appState.userState}
+						objs={appState.geomObjs}
+						onUpdate={handleUpdate}
+						onUserStateUpdate={handleUserStateUpdate}
+					/>
 				</div>
 			</div>
-			<div className="objs-editor-pane">
-				<ObjsEditorView
-					earth={appState.earth}
-					userState={appState.userState}
-					objs={appState.geomObjs}
-					onUpdate={handleUpdate}
-					onUserStateUpdate={handleUserStateUpdate}
-				/>
-			</div>
 		</div>
+		<MoreFeaturesModal
+			appState={appState}
+			onImport={handleImport}
+			onDone={handleModalDone}
+		/>
 	</Wrapper>;
 };
 

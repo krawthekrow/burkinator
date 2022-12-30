@@ -2,11 +2,16 @@
 	width: 100%;
 	height: 100%;
 	margin: 0 auto;
-	padding: 0.5rem;
 	text-align: center;
-	box-sizing: border-box;
+}
+
+.app-pane {
+	width: 100%;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
+	padding: 0.5rem;
+	box-sizing: border-box;
 }
 
 .map {
@@ -55,13 +60,11 @@
 }
 
 .toolbar-button {
-	border-radius: 4px;
 	padding: 0.25rem 0.5rem 0.1rem 0.5rem;
 	margin: 0.2rem;
 }
 
 .shortcut-button {
-	border-radius: 4px;
 	background-color: #123;
 	border-color: #245;
 	padding: 0.2rem 0.3rem 0rem 0.3rem;
@@ -76,7 +79,6 @@
 	position: absolute;
 	top: 0;
 	left: 0;
-	z-index: 2;
 }
 
 .notif-pane {
@@ -106,4 +108,72 @@
 
 .editor-btn-group > button {
 	border-radius: 0px;
+}
+
+.modal {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 100;
+	background-color: rgba(0, 0, 0, 0.5);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	text-align: left;
+}
+
+.modal-pane {
+	background-color: #222;
+	min-width: 40%;
+	border-radius: 6px;
+	max-width: 60rem;
+	max-height: 80%;
+	padding: 1rem 1rem;
+}
+
+.api-key-row {
+	display: flex;
+	width: 100%;
+	margin-bottom: 0.6rem;
+}
+
+.api-key-cell-label {
+	margin-left: 0.5rem;
+}
+
+.api-key-cell-input {
+	flex: 1;
+	display: flex;
+	align-items: center;
+}
+
+.api-key-input {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.export-textarea {
+	height: 10rem;
+	width: 100%;
+	box-sizing: border-box;
+	margin: 0.4rem 0;
+}
+
+.modal-buttons-pane {
+	display: flex;
+}
+
+.export-button {
+	margin-right: 0.4rem;
+}
+
+.modal-done-button-cell {
+	flex: 1;
+	text-align: right;
+}
+
+.modal-done-button {
+	margin: 0;
 }

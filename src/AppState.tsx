@@ -18,6 +18,7 @@ import {
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 type AppState = {
+	apiKey: string;
 	earth: EarthModel;
 	userState: UserState;
 	updHistory: UndoableUpd[];
@@ -76,7 +77,8 @@ const geomObjsToMapObjs = (
 					uniqName: newMapObjName(geomObj.uniqName),
 					geomObj: geomObj,
 					pos: geomObj.pos,
-					mapLabel: geomObj.mapLabel,
+					mapLabel: (geomObj.mapLabel.trim() == '') ?
+						geomObj.uniqName : geomObj.mapLabel,
 				});
 				break;
 			}
@@ -136,6 +138,14 @@ const geomObjsToMapObjs = (
 		}
 	}
 	return mapObjs;
+};
+
+const startNewAction = (
+	appState: AppState
+) => {
+	appState.errMsg = null;
+	appState.updHistoryAcceptMerge = appState.updHistoryNextAcceptMerge;
+	appState.updHistoryNextAcceptMerge = false;
 };
 
 const mergeUndoableUpd = (
@@ -333,7 +343,7 @@ const applyAlterUpd = (
 
 	switch (upd.t) {
 		case 'name': {
-			if (upd.newName == '' || upd.newName == upd.uniqName) {
+			if (upd.newName.trim() == '' || upd.newName == upd.uniqName) {
 				return false;
 			}
 			if (geomObjNameToString(upd.newName).includes('$')) {
@@ -349,15 +359,6 @@ const applyAlterUpd = (
 			}
 
 			registerUndoableUpd(upd);
-
-			// if the user has not changed the map label, then assume
-			// we still want to display the uniq name as the marker label
-			if (
-				obj.t == 'point' &&
-				obj.uniqName == obj.mapLabel
-			) {
-				obj.mapLabel = upd.newName;
-			}
 
 			renameRefs(appState.geomObjs, obj.uniqName, upd.newName);
 			obj.uniqName = upd.newName;
@@ -459,7 +460,7 @@ const applyUpd = (
 				t: 'point',
 				uniqName: uniqName,
 				pos: {lat: upd.pos.lat, lng: upd.pos.lng},
-				mapLabel: uniqName,
+				mapLabel: '',
 			});
 			break;
 		}
@@ -718,12 +719,37 @@ const applyRedo = (
 	applyUpd(appState, upd, true, false, false);
 };
 
-const startNewAction = (
-	appState: AppState
-) => {
-	appState.errMsg = null;
-	appState.updHistoryAcceptMerge = appState.updHistoryNextAcceptMerge;
-	appState.updHistoryNextAcceptMerge = false;
+const mergeObjs = (
+	appState: AppState,
+	newObjs: GeomObjSpec[]
+): void => {
+	const mergedObjs: GeomObjSpec[] = [];
+
+	const newObjsMap: { [uniqName: string]: GeomObjSpec } = {};
+	for (const newObj of newObjs) {
+		newObjsMap[newObj.uniqName] = newObj;
+	}
+
+	const mergedObjsMap: { [uniqName: string]: GeomObjSpec } = {};
+	for (const geomObj of appState.geomObjs) {
+		const newObj = newObjsMap[geomObj.uniqName];
+		const mergedObj = (newObj != undefined) ? newObj : geomObj;
+		if (mergedObjsMap.hasOwnProperty(mergedObj.uniqName)) {
+			continue;
+		}
+		mergedObjsMap[mergedObj.uniqName] = mergedObj;
+		mergedObjs.push(mergedObj);
+	}
+
+	for (const newObj of newObjs) {
+		if (mergedObjsMap.hasOwnProperty(newObj.uniqName)) {
+			continue;
+		}
+		mergedObjsMap[newObj.uniqName] = newObj;
+		mergedObjs.push(newObj);
+	}
+
+	appState.geomObjs = mergedObjs;
 };
 
 const AppStateReducer = {
@@ -732,6 +758,7 @@ const AppStateReducer = {
 	updateMarkerPos: updateMarkerPos,
 	applyUndo: applyUndo,
 	applyRedo: applyRedo,
+	mergeObjs: mergeObjs,
 };
 
 export type { AppState };
