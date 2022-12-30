@@ -377,6 +377,51 @@ const parseGeomObjs = (appState: AppState, spec: string): [
 	return [null, geomObjs];
 };
 
+const saveState = (geomObjs: GeomObjSpec[]): void => {
+	const exportStr = stringifyGeomObjs(geomObjs);
+	try {
+		localStorage.setItem('__burkinator_state', JSON.stringify(exportStr));
+	}
+	catch { }
+};
+
+const loadState = (appState: AppState): GeomObjSpec[] => {
+	let importStrRaw: string | null = null;
+	let importStr: string = '';
+
+	try {
+		importStrRaw = localStorage.getItem('__burkinator_state');
+	} catch { }
+	if (importStrRaw == null) {
+		return [];
+	}
+
+	try {
+		importStr = JSON.parse(importStrRaw);
+	} catch { }
+	if (importStr == '') {
+		return [];
+	}
+
+	const [importErr, geomObjs] = parseGeomObjs(appState, importStr);
+	if (importErr) {
+		console.error(importErr);
+		console.error(importStr);
+		try {
+			localStorage.setItem(
+				'__burkinator_err_state',
+				JSON.stringify(importStr)
+			);
+		}
+		catch { }
+		return [];
+	}
+	if (geomObjs == null) {
+		throw new Error('geomObjs should exist if no error');
+	}
+	return geomObjs;
+};
+
 const MoreFeaturesModal = (
 	{appState, onImport, onDone}: {
 		appState: AppState,
@@ -397,7 +442,7 @@ const MoreFeaturesModal = (
 		if (apiKeyRef.current != null) {
 			const newApiKey = apiKeyRef.current.value.trim();
 			if (appState.apiKey != newApiKey) {
-				localStorage.setItem('apiKey', newApiKey);
+				localStorage.setItem('__burkinator_apiKey', newApiKey);
 				location.reload();
 			}
 		}
@@ -512,17 +557,16 @@ const App = (): JSX.Element => {
 	const [appState, setAppState] = useImmer<AppState>(() => {
 		let apiKey: string | null = null;
 		try {
-			apiKey = localStorage.getItem('apiKey');
+			apiKey = localStorage.getItem('__burkinator_apiKey');
 		}
-		catch (e) {
-		}
+		catch { }
 		if (apiKey == null || apiKey == '') {
 			apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 		}
 		if (apiKey == null) {
 			apiKey = '';
 		}
-		return {
+		const initAppState: AppState = {
 			apiKey: apiKey,
 			earth: initEarth,
 			userState: { t: 'free' },
@@ -534,10 +578,16 @@ const App = (): JSX.Element => {
 			mapObjs: geomObjsToMapObjs(initEarth, initObjs),
 			// last used id to assign each object a unique default name
 			lastUsedId: 0,
-			mapCenter: {lat: -25.344, lng: 131.031},
-			mapZoom: 4,
+			mapCenter: {lat: 0, lng: 0},
+			mapZoom: 1,
 			errMsg: null,
 		};
+		const loadedObjs = loadState(initAppState);
+		if (loadedObjs.length > 0) {
+			initAppState.geomObjs = loadedObjs;
+			initAppState.mapObjs = geomObjsToMapObjs(initEarth, loadedObjs);
+		}
+		return initAppState;
 	});
 
 	const renderErr = (status: Status) => {
@@ -593,6 +643,7 @@ const App = (): JSX.Element => {
 					assertUnhandledType(userState);
 				}
 			}
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -620,6 +671,7 @@ const App = (): JSX.Element => {
 			AppStateReducer.updateMarkerPos(
 				draftAppState, markerName, geomObj, pos
 			);
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -648,6 +700,7 @@ const App = (): JSX.Element => {
 					break;
 				}
 			}
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -661,6 +714,7 @@ const App = (): JSX.Element => {
 				t: 'delete',
 				uniqName: geomObj.uniqName,
 			});
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -670,6 +724,7 @@ const App = (): JSX.Element => {
 		setAppState((draftAppState) => {
 			AppStateReducer.startNewAction(draftAppState);
 			AppStateReducer.applyUpd(draftAppState, upd);
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -686,6 +741,7 @@ const App = (): JSX.Element => {
 		setAppState((draftAppState) => {
 			AppStateReducer.startNewAction(draftAppState);
 			AppStateReducer.applyUndo(draftAppState);
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -693,6 +749,7 @@ const App = (): JSX.Element => {
 		setAppState((draftAppState) => {
 			AppStateReducer.startNewAction(draftAppState);
 			AppStateReducer.applyRedo(draftAppState);
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -703,6 +760,7 @@ const App = (): JSX.Element => {
 				t: 'more',
 				importErr: '',
 			};
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -733,6 +791,7 @@ const App = (): JSX.Element => {
 			draftAppState.userState = {
 				t: 'free',
 			};
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
@@ -756,6 +815,7 @@ const App = (): JSX.Element => {
 			else {
 				draftAppState.userState.importErr = importErr;
 			}
+			saveState(draftAppState.geomObjs);
 		});
 	};
 
