@@ -76,7 +76,7 @@ const PointEditorView = (
 		onUpdate({
 			t: 'mapLabel',
 			uniqName: obj.uniqName,
-			newMapLabel: newVal,
+			newMapLabel: newVal.trim(),
 		});
 	};
 
@@ -126,7 +126,7 @@ const GeodesicEditorView = (
 		onUpdate({
 			t: 'geodesicStart',
 			uniqName: obj.uniqName,
-			newPtRef: newGeomObjName(newVal),
+			newPtRef: newGeomObjName(newVal.trim()),
 		});
 	};
 
@@ -134,7 +134,7 @@ const GeodesicEditorView = (
 		onUpdate({
 			t: 'geodesicEnd',
 			uniqName: obj.uniqName,
-			newPtRef: newGeomObjName(newVal),
+			newPtRef: newGeomObjName(newVal.trim()),
 		});
 	};
 
@@ -225,7 +225,7 @@ const GeodesicEditorView = (
 		onUpdate({
 			t: 'geodesicDestPtMapLabel',
 			uniqName: obj.uniqName,
-			newVal: newVal,
+			newVal: newVal.trim(),
 		});
 	};
 
@@ -352,7 +352,7 @@ const ObjEditorView = (
 		onUpdate({
 			t: 'name',
 			uniqName: obj.uniqName,
-			newName: newGeomObjName(newVal),
+			newName: newGeomObjName(newVal.trim()),
 		});
 	};
 

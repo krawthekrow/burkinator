@@ -332,7 +332,7 @@ const applyAlterGeodesicUpd = (
 				...upd,
 				oldVal: obj.destPtMapLabel,
 			});
-			obj.destPtMapLabel = upd.newVal.trim();
+			obj.destPtMapLabel = upd.newVal;
 			return true;
 		}
 	}
@@ -354,7 +354,7 @@ const applyAlterUpd = (
 
 	switch (upd.t) {
 		case 'name': {
-			if (upd.newName.trim() == '' || upd.newName == upd.uniqName) {
+			if (upd.newName == '' || upd.newName == upd.uniqName) {
 				return false;
 			}
 			const uniqNameErr = validateUniqName(upd.newName);
@@ -395,7 +395,7 @@ const applyAlterUpd = (
 				...upd,
 				oldMapLabel: obj.mapLabel,
 			});
-			obj.mapLabel = upd.newMapLabel.trim();
+			obj.mapLabel = upd.newMapLabel;
 			break;
 		}
 		case 'geodesicStart':
