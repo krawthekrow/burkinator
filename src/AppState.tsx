@@ -548,6 +548,14 @@ const applyUpd = (
 			appState.geomObjs.splice(objIndex, 1);
 			break;
 		}
+		case 'replace': {
+			registerUndoableUpd({
+				...upd,
+				oldObjs: appState.geomObjs,
+			});
+			appState.geomObjs = upd.newObjs;
+			break;
+		}
 		default: {
 			if (!applyAlterUpd(
 				appState, upd, registerUndoableUpd, doUpdateUserState
@@ -736,6 +744,10 @@ const applyUndoNoSync = (
 		}
 		case 'delete': {
 			appState.geomObjs.splice(upd.deletedObjIndex, 0, upd.deletedObj);
+			break;
+		}
+		case 'replace': {
+			appState.geomObjs = upd.oldObjs;
 			break;
 		}
 		default: {

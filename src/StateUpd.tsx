@@ -34,6 +34,15 @@ type UndoableDeleteObjUpd = DeleteObjUpd & {
 	deletedObj: GeomObjSpec;
 };
 
+type ReplaceUpd = {
+	t: 'replace';
+	newObjs: GeomObjSpec[];
+};
+
+type UndoableReplaceUpd = ReplaceUpd & {
+	oldObjs: GeomObjSpec[];
+};
+
 // Types used to describe an update to a geometric object.
 
 type AlterUpdBase = {
@@ -147,14 +156,15 @@ type UndoableAlterUpd =
 
 type UndoableUpd =
 	UndoableNewPointUpd | UndoableNewGeodesicUpd |
-	UndoableDeleteObjUpd | UndoableAlterUpd
+	UndoableDeleteObjUpd | UndoableReplaceUpd | UndoableAlterUpd
 ;
 
 type StateUpd =
-	AlterUpd |
 	NewPointUpd |
 	NewGeodesicUpd |
-	DeleteObjUpd
+	DeleteObjUpd |
+	ReplaceUpd |
+	AlterUpd
 ;
 
 export type {

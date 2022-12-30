@@ -48,28 +48,13 @@ const Toolbar = (
 		});
 	};
 
-	const handleClickUndo = (
+	const handleClear = (
 		e: React.MouseEvent<HTMLButtonElement>
 	) => {
-		onUndo();
-	};
-
-	const handleClickRedo = (
-		e: React.MouseEvent<HTMLButtonElement>
-	) => {
-		onRedo();
-	};
-
-	const handleClickCancel = (
-		e: React.MouseEvent<HTMLButtonElement>
-	) => {
-		onCancel();
-	};
-
-	const handleClickMore = (
-		e: React.MouseEvent<HTMLButtonElement>
-	) => {
-		onMore();
+		onUpdate({
+			t: 'replace',
+			newObjs: [],
+		});
 	};
 
 	const cancelButtonDom = [
@@ -77,7 +62,7 @@ const Toolbar = (
 	].includes(userState.t) ? <button
 		className="toolbar-button"
 		disabled={false}
-		onClick={handleClickCancel}
+		onClick={onCancel}
 	>
 		Cancel
 	</button> : null;
@@ -91,17 +76,22 @@ const Toolbar = (
 		<button
 			className="toolbar-button"
 			disabled={userState.t != 'free' || !undoEnabled}
-			onClick={handleClickUndo}
+			onClick={onUndo}
 		>Undo</button>
 		<button
 			className="toolbar-button"
 			disabled={userState.t != 'free' || !redoEnabled}
-			onClick={handleClickRedo}
+			onClick={onRedo}
 		>Redo</button>
 		<button
 			className="toolbar-button"
 			disabled={userState.t != 'free'}
-			onClick={handleClickMore}
+			onClick={handleClear}
+		>Clear</button>
+		<button
+			className="toolbar-button"
+			disabled={userState.t != 'free'}
+			onClick={onMore}
 		>More...</button>
 		{ cancelButtonDom }
 	</>;
