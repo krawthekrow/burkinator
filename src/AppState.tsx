@@ -775,9 +775,9 @@ const applyRedo = (
 };
 
 const mergeObjs = (
-	appState: AppState,
+	geomObjs: GeomObjSpec[],
 	newObjs: GeomObjSpec[]
-): void => {
+): GeomObjSpec[] => {
 	const mergedObjs: GeomObjSpec[] = [];
 
 	const newObjsMap: { [uniqName: string]: GeomObjSpec } = {};
@@ -786,7 +786,7 @@ const mergeObjs = (
 	}
 
 	const mergedObjsMap: { [uniqName: string]: GeomObjSpec } = {};
-	for (const geomObj of appState.geomObjs) {
+	for (const geomObj of geomObjs) {
 		const newObj = newObjsMap[geomObj.uniqName];
 		const mergedObj = (newObj != undefined) ? newObj : geomObj;
 		if (mergedObjsMap.hasOwnProperty(mergedObj.uniqName)) {
@@ -804,7 +804,18 @@ const mergeObjs = (
 		mergedObjs.push(newObj);
 	}
 
-	appState.geomObjs = mergedObjs;
+	return mergedObjs;
+};
+
+const applyMerge = (
+	appState: AppState,
+	newObjs: GeomObjSpec[],
+): void => {
+	const mergedObjs = mergeObjs(appState.geomObjs, newObjs);
+	applyUpd(appState, {
+		t: 'replace',
+		newObjs: mergedObjs,
+	});
 };
 
 const AppStateReducer = {
@@ -814,7 +825,7 @@ const AppStateReducer = {
 	updateMarkerPos: updateMarkerPos,
 	applyUndo: applyUndo,
 	applyRedo: applyRedo,
-	mergeObjs: mergeObjs,
+	applyMerge: applyMerge,
 };
 
 export type { AppState };

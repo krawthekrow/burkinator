@@ -140,7 +140,7 @@ const parseGeomObjs = (spec: string): [
 	const lines = spec.split('\n');
 	let versionLine = undefined;
 	let lineNum = 0;
-	while (versionLine == undefined) {
+	while (versionLine == undefined || versionLine.trim() == '') {
 		versionLine = lines.shift();
 		lineNum++;
 	}
@@ -169,7 +169,7 @@ const parseGeomObjs = (spec: string): [
 		const params = line.trim().split(/\s+/);
 
 		const kindEncoded = params.shift();
-		if (kindEncoded == undefined) {
+		if (kindEncoded == undefined || kindEncoded == '') {
 			continue;
 		}
 
@@ -352,7 +352,7 @@ const MoreFeaturesModal = (
 	const importErrDom = (errMsg == '') ? null : <div
 		className="import-err"
 	>
-		errMsg
+		Error: { errMsg }
 	</div>;
 
 	return <div className="modal">
@@ -655,8 +655,9 @@ const App = (): JSX.Element => {
 
 	const handleImport = (newObjs: GeomObjSpec[]): void => {
 		setAppState((draftAppState) => {
-			AppStateReducer.mergeObjs(draftAppState, newObjs);
-			AppStateReducer.resetUpdHistory(draftAppState);
+			const mergedObjs = AppStateReducer.applyMerge(
+				draftAppState, newObjs
+			);
 		});
 	};
 
