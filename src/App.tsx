@@ -436,12 +436,14 @@ const App = (): JSX.Element => {
 		}
 		catch (e) {
 		}
+		if (apiKey == null || apiKey == '') {
+			apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+		}
 		if (apiKey == null) {
 			apiKey = '';
 		}
 		return {
-			// don't enable production api access for now
-			apiKey: apiKey /* import.meta.env.VITE_GOOGLE_MAPS_API_KEY */,
+			apiKey: apiKey,
 			earth: initEarth,
 			userState: { t: 'free' },
 			updHistory: [],
