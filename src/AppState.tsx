@@ -445,8 +445,21 @@ const renameRefs = (
 };
 
 const genUniqName = (appState: AppState): GeomObjName => {
-	const uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
+	let uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
 	appState.lastUsedId++;
+	const conflictIndex = appState.geomObjs.findIndex((geomObj) => {
+		return geomObj.uniqName == uniqName;
+	});
+	if (conflictIndex != -1) {
+		const geomObjsMap: { [uniqName: string]: GeomObjSpec } = {};
+		for (const geomObj of appState.geomObjs) {
+			geomObjsMap[geomObj.uniqName] = geomObj;
+		}
+		while (geomObjsMap[uniqName]) {
+			uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
+			appState.lastUsedId++;
+		}
+	}
 	return uniqName;
 };
 
