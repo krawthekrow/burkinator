@@ -572,6 +572,13 @@ const App = (): JSX.Element => {
 		return <h2>{status}</h2>;
 	};
 
+	const handleMapParamsChange = (center: LatLngLiteral, zoom: number) => {
+		setAppState((draftAppState) => {
+			draftAppState.mapCenter = center;
+			draftAppState.mapZoom = zoom;
+		});
+	};
+
 	const handleMapClick = (pos: LatLngLiteral) => {
 		setAppState((draftAppState) => {
 			const userState = draftAppState.userState;
@@ -854,6 +861,7 @@ const App = (): JSX.Element => {
 						center={appState.mapCenter}
 						zoom={appState.mapZoom}
 						markersDraggable={appState.userState.t == 'free'}
+						onMapParamsChange={handleMapParamsChange}
 						onMapClick={handleMapClick}
 						onMarkerDrag={handleMarkerDrag}
 						onMarkerDragEnd={handleMarkerDragEnd}
@@ -870,7 +878,7 @@ const App = (): JSX.Element => {
 				<div className="objs-editor-pane">
 					<ObjsEditorView
 						earth={appState.earth}
-						userState={appState.userState}
+						appState={appState}
 						objs={appState.geomObjs}
 						onUpdate={handleUpdate}
 						onUserStateUpdate={handleUserStateUpdate}

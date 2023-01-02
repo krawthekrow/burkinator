@@ -11,6 +11,7 @@ const MapView = (
 		objs,
 		center, zoom,
 		markersDraggable,
+		onMapParamsChange,
 		onMapClick,
 		onMarkerDrag, onMarkerDragEnd,
 		onMarkerClick, onMarkerRightClick,
@@ -19,6 +20,7 @@ const MapView = (
 		center: LatLngLiteral,
 		zoom: number,
 		markersDraggable: boolean,
+		onMapParamsChange: (center: LatLngLiteral, zoom: number) => void,
 		onMapClick: (pos: LatLngLiteral) => void,
 		onMarkerDrag: (
 			markerName: MapObjName,
@@ -102,6 +104,7 @@ const MapView = (
 			center={center}
 			zoom={zoom}
 			onMapInit={handleMapInit}
+			onMapParamsChange={onMapParamsChange}
 			onClick={onMapClick}
 		/>
 		{domObjs}

@@ -8,10 +8,11 @@ const flattenLatLng = (pos: LatLng): LatLngLiteral => {
 }
 
 const GMap = (
-	{center, zoom, onMapInit, onClick}: {
+	{center, zoom, onMapInit, onMapParamsChange, onClick}: {
 		center: LatLngLiteral,
 		zoom: number,
 		onMapInit: (map: google.maps.Map) => void,
+		onMapParamsChange: (center: LatLngLiteral, zoom: number) => void,
 		onClick: (pos: LatLngLiteral) => void,
 	}
 ) => {
@@ -30,20 +31,39 @@ const GMap = (
 				onClick(flattenLatLng(e.latLng));
 			});
 
+			const updateMapParams = () => {
+				onMapParamsChange(flattenLatLng(map.getCenter()), map.getZoom());
+			};
+
+			const centerChangeListener = map.addListener(
+				'center_changed', () => {
+					updateMapParams();
+				}
+			);
+			const zoomChangeListener = map.addListener(
+				'zoom_changed', () => {
+					updateMapParams();
+				}
+			);
+
 			return () => {
 				google.maps.event.removeListener(clickListener);
+				google.maps.event.removeListener(centerChangeListener);
+				google.maps.event.removeListener(zoomChangeListener);
 			};
 		}
 	}, [map]);
 
 	useEffect(() => {
 		if (map) {
+			// only set initial center and zoom since re-updating every time
+			// center/zoom changes breaks the interface
 			map.setOptions({
-				center: center,
-				zoom: zoom,
+				center: { lat: 0, lng: 0 },
+				zoom: 1,
 			});
 		}
-	}, [map, center.lat, center.lng, zoom]);
+	}, [map]);
 
 	useEffect(() => {
 		if (map) {

@@ -9,6 +9,9 @@ import {
 } from './EarthModel';
 import { UserState } from './UserState';
 import {
+	AppState,
+} from './AppState';
+import {
 	newGeomObjName, GeomObjSpec,
 	ResolvedGeomPointSpec, ResolvedGeomGeodesicSpec, ResolvedGeomObjSpec,
 	resolveGeomObjs, getGeomObjPos, invertGeodesicDestPt,
@@ -46,8 +49,8 @@ const coordToString = (x:number): string => {
 };
 
 const PointEditorView = (
-	{userState, obj, onUpdate}: {
-		userState: UserState,
+	{appState, obj, onUpdate}: {
+		appState: AppState,
 		obj: ResolvedGeomPointSpec,
 		onUpdate: (upd: StateUpd) => void,
 	}
@@ -84,17 +87,17 @@ const PointEditorView = (
 		<div>
 			Lat: <ReactiveTextInput
 				val={coordToString(obj.pos.lat)}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				className="coord-input"
 				onCommit={handleCommitLat}
 			/>, Lng: <ReactiveTextInput
 				val={coordToString(obj.pos.lng)}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				className="coord-input"
 				onCommit={handleCommitLng}
 			/>, Label: <ReactiveTextInput
 				val={obj.mapLabel}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				className="name-input"
 				onCommit={handleCommitMapLabel}
 			/>
@@ -103,9 +106,9 @@ const PointEditorView = (
 };
 
 const GeodesicEditorView = (
-	{earth, userState, obj, onUpdate, onUserStateUpdate}: {
+	{earth, appState, obj, onUpdate, onUserStateUpdate}: {
 		earth: EarthModel,
-		userState: UserState,
+		appState: AppState,
 		obj: ResolvedGeomGeodesicSpec,
 		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
@@ -167,6 +170,17 @@ const GeodesicEditorView = (
 	};
 
 	const handleChangeDestPtEnabled = (newVal: boolean) => {
+		if (obj.destPtDist == 0 && obj.destPtTurnAngle == 0) {
+			// https://groups.google.com/g/google-maps-js-api-v3/c/hDRO4oHVSeM/m/osOYQYXg2oUJ
+			const metersPerPixel = 156543.03392 *
+				Math.cos(appState.mapCenter.lat * Math.PI / 180) /
+				Math.pow(2, appState.mapZoom);
+			onUpdate({
+				t: 'geodesicDestPtDist',
+				uniqName: obj.uniqName,
+				newVal: metersPerPixel / 1000 * 40,
+			});
+		}
 		onUpdate({
 			t: 'geodesicDestPtEnabled',
 			uniqName: obj.uniqName,
@@ -232,12 +246,12 @@ const GeodesicEditorView = (
 	const destPtParamsDom = obj.destPtEnabled ? <>
 		{' '}(Turn: <ReactiveTextInput
 			val={angleToString(obj.destPtTurnAngle)}
-			disabled={userState.t != 'free'}
+			disabled={appState.userState.t != 'free'}
 			className="coord-input"
 			onCommit={handleCommitDestPtTurnAngle}
 		/>°, Distance: <ReactiveTextInput
 			val={distToKmString(obj.destPtDist)}
-			disabled={userState.t != 'free'}
+			disabled={appState.userState.t != 'free'}
 			className="coord-input"
 			onCommit={handleCommitDestPtDist}
 		/> km)
@@ -245,17 +259,17 @@ const GeodesicEditorView = (
 	const destPtPosDom = (obj.destPtPos == null) ? null : <div>
 		Lat: <ReactiveTextInput
 			val={coordToString(obj.destPtPos.lat)}
-			disabled={userState.t != 'free'}
+			disabled={appState.userState.t != 'free'}
 			className="coord-input"
 			onCommit={handleCommitDestPtLat}
 		/>, Lng: <ReactiveTextInput
 			val={coordToString(obj.destPtPos.lng)}
-			disabled={userState.t != 'free'}
+			disabled={appState.userState.t != 'free'}
 			className="coord-input"
 			onCommit={handleCommitDestPtLng}
 		/>, Label: <ReactiveTextInput
 			val={obj.destPtMapLabel}
-			disabled={userState.t != 'free'}
+			disabled={appState.userState.t != 'free'}
 			className="name-input"
 			onCommit={handleCommitDestPtMapLabel}
 		/>
@@ -268,12 +282,12 @@ const GeodesicEditorView = (
 		<div>
 			Start: <ReactiveTextInput
 				val={(obj.ptStart != null) ? obj.ptStart.uniqName : ''}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				className="name-input"
 				onCommit={handleCommitPtStart}
 			/> <button
 				className="shortcut-button"
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				onClick={handleClickSelectStart}
 			>
 				S
@@ -282,12 +296,12 @@ const GeodesicEditorView = (
 		<div>
 			End: <ReactiveTextInput
 				val={(obj.ptEnd != null) ? obj.ptEnd.uniqName : ''}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				className="name-input"
 				onCommit={handleCommitPtEnd}
 			/> <button
 				className="shortcut-button"
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				onClick={handleClickSelectTo}
 			>
 				S
@@ -297,7 +311,7 @@ const GeodesicEditorView = (
 			<ReactiveButtonGroup
 				buttonTexts={useFarOptButtonTexts}
 				val={obj.useFarArc ? 1 : 0}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				onChange={handleChangeUseFarArc}
 			/> {
 				(arcDist == null) ? '' :
@@ -307,7 +321,7 @@ const GeodesicEditorView = (
 		<div>
 			<ReactiveCheckbox
 				val={obj.destPtEnabled}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				className={''}
 				onChange={handleChangeDestPtEnabled}
 			/> Dest Pt
@@ -318,9 +332,9 @@ const GeodesicEditorView = (
 };
 
 const ObjEditorView = (
-	{earth, userState, obj, onUpdate, onUserStateUpdate}: {
+	{earth, appState, obj, onUpdate, onUserStateUpdate}: {
 		earth: EarthModel,
-		userState: UserState,
+		appState: AppState,
 		obj: ResolvedGeomObjSpec,
 		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
@@ -330,7 +344,7 @@ const ObjEditorView = (
 		switch (obj.t) {
 			case 'point': {
 				return <PointEditorView
-					userState={userState}
+					appState={appState}
 					obj={obj}
 					onUpdate={onUpdate}
 				/>;
@@ -338,7 +352,7 @@ const ObjEditorView = (
 			case 'geodesic': {
 				return <GeodesicEditorView
 					earth={earth}
-					userState={userState}
+					appState={appState}
 					obj={obj}
 					onUpdate={onUpdate}
 					onUserStateUpdate={onUserStateUpdate}
@@ -369,14 +383,14 @@ const ObjEditorView = (
 		<div>
 			<ReactiveTextInput
 				val={obj.uniqName}
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				className="name-input"
 				onCommit={handleCommitName}
 			/>
 			&nbsp; ({obj.t})
 			&nbsp;<button
 				className="shortcut-button del-shortcut-button"
-				disabled={userState.t != 'free'}
+				disabled={appState.userState.t != 'free'}
 				onClick={handleDelete}
 			>
 				X
@@ -387,9 +401,9 @@ const ObjEditorView = (
 };
 
 const ObjsEditorView = (
-	{earth, userState, objs, onUpdate, onUserStateUpdate}: {
+	{earth, appState, objs, onUpdate, onUserStateUpdate}: {
 		earth: EarthModel,
-		userState: UserState,
+		appState: AppState,
 		objs: GeomObjSpec[],
 		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
@@ -400,7 +414,7 @@ const ObjsEditorView = (
 		return <ObjEditorView
 			key={obj.uniqName}
 			earth={earth}
-			userState={userState}
+			appState={appState}
 			obj={obj}
 			onUpdate={onUpdate}
 			onUserStateUpdate={onUserStateUpdate}
