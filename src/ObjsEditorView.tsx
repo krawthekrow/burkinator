@@ -12,7 +12,7 @@ import {
 	AppState,
 } from './AppState';
 import {
-	newGeomObjName, GeomObjSpec,
+	newGeomObjName, GeomObjName, GeomObjSpec,
 	ResolvedGeomPointSpec, ResolvedGeomGeodesicSpec, ResolvedGeomObjSpec,
 	resolveGeomObjs, getGeomObjPos, invertGeodesicDestPt,
 } from './GeomObj';
@@ -332,14 +332,17 @@ const GeodesicEditorView = (
 };
 
 const ObjEditorView = (
-	{earth, appState, obj, onUpdate, onUserStateUpdate}: {
+	{earth, appState, obj, onFocus, onUpdate, onUserStateUpdate}: {
 		earth: EarthModel,
 		appState: AppState,
 		obj: ResolvedGeomObjSpec,
+		onFocus: (uniqName: GeomObjName) => void,
 		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
+	const isFocused = appState.focusedObj == obj.uniqName;
+
 	const getInnerEditor = (): JSX.Element => {
 		switch (obj.t) {
 			case 'point': {
@@ -377,8 +380,13 @@ const ObjEditorView = (
 		});
 	};
 
+	const handleClick = () => {
+		onFocus(obj.uniqName);
+	};
+
 	return <div
-		className="obj-editor"
+		className={`obj-editor${isFocused ? ' focused-obj-editor' : ''}`}
+		onClick={handleClick}
 	>
 		<div>
 			<ReactiveTextInput
@@ -401,10 +409,11 @@ const ObjEditorView = (
 };
 
 const ObjsEditorView = (
-	{earth, appState, objs, onUpdate, onUserStateUpdate}: {
+	{earth, appState, objs, onFocus, onUpdate, onUserStateUpdate}: {
 		earth: EarthModel,
 		appState: AppState,
 		objs: GeomObjSpec[],
+		onFocus: (uniqName: GeomObjName) => void,
 		onUpdate: (upd: StateUpd) => void,
 		onUserStateUpdate: (newState: UserState) => void,
 	}
@@ -416,6 +425,7 @@ const ObjsEditorView = (
 			earth={earth}
 			appState={appState}
 			obj={obj}
+			onFocus={onFocus}
 			onUpdate={onUpdate}
 			onUserStateUpdate={onUserStateUpdate}
 		/>;

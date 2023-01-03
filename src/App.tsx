@@ -554,6 +554,7 @@ const App = (): JSX.Element => {
 			updHistoryNextAcceptMerge: false,
 			geomObjs: [],
 			mapObjs: [],
+			focusedObj: newGeomObjName(''),
 			// last used id to assign each object a unique default name
 			lastUsedId: 0,
 			mapCenter: {lat: 0, lng: 0},
@@ -666,6 +667,7 @@ const App = (): JSX.Element => {
 	) => {
 		setAppState((draftAppState) => {
 			AppStateReducer.startNewAction(draftAppState);
+			draftAppState.focusedObj = geomObj.uniqName;
 			const userState = draftAppState.userState;
 			switch (userState.t) {
 				case 'geodesicStart': {
@@ -804,6 +806,12 @@ const App = (): JSX.Element => {
 		});
 	};
 
+	const handleFocusObj = (uniqName: GeomObjName) => {
+		setAppState((draftAppState) => {
+			draftAppState.focusedObj = uniqName;
+		});
+	};
+
 	let instructionMsg: string | null = null;
 	switch (appState.userState.t) {
 		case 'geodesicStart': {
@@ -880,6 +888,7 @@ const App = (): JSX.Element => {
 						earth={appState.earth}
 						appState={appState}
 						objs={appState.geomObjs}
+						onFocus={handleFocusObj}
 						onUpdate={handleUpdate}
 						onUserStateUpdate={handleUserStateUpdate}
 					/>

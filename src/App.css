@@ -55,14 +55,21 @@
 	margin-bottom: 0.3rem;
 }
 
+.focused-obj-editor {
+	border-color: #bb6;
+}
+
 .toolbar-pane {
 	text-align: left;
-	margin-bottom: 0.1rem;
+	margin-bottom: 0.2rem;
 }
 
 .toolbar-button {
 	padding: 0.25rem 0.5rem 0.1rem 0.5rem;
-	margin: 0.2rem;
+}
+
+.toolbar-button:not(:last-child) {
+	margin-right: 0.2rem;
 }
 
 .shortcut-button {

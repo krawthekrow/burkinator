@@ -27,6 +27,7 @@ type AppState = {
 	updHistoryNextAcceptMerge: boolean;
 	geomObjs: GeomObjSpec[];
 	mapObjs: MapObjSpec[];
+	focusedObj: GeomObjName;
 	lastUsedId: number;
 	mapCenter: LatLngLiteral;
 	mapZoom: number;
@@ -351,6 +352,7 @@ const applyAlterUpd = (
 			`could not find geom obj with name ${upd.uniqName}`
 		);
 	}
+	appState.focusedObj = obj.uniqName;
 
 	switch (upd.t) {
 		case 'name': {
@@ -515,6 +517,7 @@ const applyUpd = (
 				pos: {lat: upd.pos.lat, lng: upd.pos.lng},
 				mapLabel: '',
 			}, upd.insertBeforeUniqName);
+			appState.focusedObj = uniqName;
 			break;
 		}
 		case 'newGeodesic': {
@@ -542,6 +545,7 @@ const applyUpd = (
 					doPtEndNext: true,
 				};
 			}
+			appState.focusedObj = uniqName;
 			break;
 		}
 		case 'delete': {
@@ -555,6 +559,7 @@ const applyUpd = (
 				deletedObj: obj,
 			});
 			appState.geomObjs.splice(objIndex, 1);
+			appState.focusedObj = upd.uniqName;
 			break;
 		}
 		case 'replace': {
@@ -563,6 +568,7 @@ const applyUpd = (
 				oldObjs: appState.geomObjs,
 			});
 			appState.geomObjs = upd.newObjs;
+			appState.focusedObj = newGeomObjName('');
 			break;
 		}
 		default: {
@@ -691,6 +697,7 @@ const applyUndoAlterUpd = (
 			`could not find geom obj with name ${upd.uniqName}`
 		);
 	}
+	appState.focusedObj = obj.uniqName;
 	switch (upd.t) {
 		case 'name': {
 			renameRefs(appState.geomObjs, upd.newName, upd.uniqName);
@@ -749,14 +756,17 @@ const applyUndoNoSync = (
 			appState.geomObjs = appState.geomObjs.filter((geomObj) => {
 				return geomObj.uniqName != upd.uniqName;
 			});
+			appState.focusedObj = upd.uniqName;
 			break;
 		}
 		case 'delete': {
 			appState.geomObjs.splice(upd.deletedObjIndex, 0, upd.deletedObj);
+			appState.focusedObj = upd.deletedObj.uniqName;
 			break;
 		}
 		case 'replace': {
 			appState.geomObjs = upd.oldObjs;
+			appState.focusedObj = newGeomObjName('');
 			break;
 		}
 		default: {
