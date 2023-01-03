@@ -339,29 +339,31 @@ const parseGeomObjStep = (
 		return false;
 	};
 
-	let pos = { lat: 0, lng: 0 };
+	let pos: LatLngLiteral | null = null;
 	// return true if it encounters a parse error
 	const parseLocation = (): boolean => {
 		const param1 = params.shift();
 		if (param1 == undefined) {
-			setLineErr(`no location provided`);
-			return true;
+			// skip over points with no location
+			return false;
 		}
 
 		const param1Num = Number(param1);
 		if (!isNaN(param1Num)) {
-			pos.lat = param1Num;
+			const lat = param1Num;
 
 			const lngVal = params.shift();
 			if (lngVal == undefined) {
 				setLineErr(`no lng provided`);
 				return true;
 			}
-			pos.lng = Number(lngVal);
-			if (isNaN(pos.lng)) {
+			const lng = Number(lngVal);
+			if (isNaN(lng)) {
 				setLineErr(`unable to parse lng "${lngVal}"`);
 				return true;
 			}
+
+			pos = { lat: lat, lng: lng };
 			
 			return false;
 		}
@@ -440,6 +442,10 @@ const parseGeomObjStep = (
 
 		if (parseLocation()) {
 			return true;
+		}
+		if (pos == null) {
+			// skip over points with no location
+			return false;
 		}
 
 		let mapLabel = params.shift();
@@ -646,6 +652,7 @@ const MoreFeaturesModal = (
 	}
 ): JSX.Element | null => {
 	const apiKeyRef = useRef<HTMLInputElement>(null);
+	const exportTextAreaRef = useRef<HTMLTextAreaElement>(null);
 	const [exportText, setExportText] = useState('');
 	const isInterfaceDisabled =
 		appState.userState.t == 'more' &&
@@ -683,6 +690,25 @@ const MoreFeaturesModal = (
 
 	const handleExport = (): void => {
 		setExportText(stringifyGeomObjs(appState.geomObjs));
+	};
+
+	const handleExportOnKeyDown = (
+		e: React.KeyboardEvent<HTMLTextAreaElement>
+	): void => {
+		const elem = exportTextAreaRef.current;
+		if (e.key == 'Tab' && elem) {
+			e.preventDefault();
+			const selStart = elem.selectionStart;
+			const selEnd = elem.selectionEnd;
+			setExportText((exportText) => {
+				setTimeout(() => {
+					elem.selectionStart = selStart + 1;
+					elem.selectionEnd = selStart + 1;
+				});
+				return exportText.substring(0, selStart) +
+					'\t' + exportText.substring(selEnd);
+			});
+		}
 	};
 
 	const importErr = appState.userState.importErr;
@@ -742,10 +768,12 @@ const MoreFeaturesModal = (
 			</div>
 			<div>
 				<textarea
+					ref={exportTextAreaRef}
 					className="export-textarea"
 					value={exportText}
 					disabled={isInterfaceDisabled}
 					onChange={handleChangeExportText}
+					onKeyDown={handleExportOnKeyDown}
 				/>
 			</div>
 			{ importInfoDom }
