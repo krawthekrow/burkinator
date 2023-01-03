@@ -11,6 +11,7 @@ const MapView = (
 		objs,
 		center, zoom,
 		markersDraggable,
+		onMapLoad,
 		onMapParamsChange,
 		onMapClick,
 		onMarkerDrag, onMarkerDragEnd,
@@ -20,6 +21,7 @@ const MapView = (
 		center: LatLngLiteral,
 		zoom: number,
 		markersDraggable: boolean,
+		onMapLoad: () => void,
 		onMapParamsChange: (center: LatLngLiteral, zoom: number) => void,
 		onMapClick: (pos: LatLngLiteral) => void,
 		onMarkerDrag: (
@@ -97,6 +99,7 @@ const MapView = (
 
 	const handleMapInit = (map: google.maps.Map) => {
 		setMap(map);
+		onMapLoad();
 	};
 
 	return <div className="map-pane-inner">

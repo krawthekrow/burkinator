@@ -190,3 +190,38 @@
 .import-err {
 	color: #e66;
 }
+
+.import-info {
+	color: #ada;
+}
+
+.import-instructions {
+	display: flex;
+	align-items: stretch;
+}
+
+.import-instructions-left {
+	flex: 1;
+}
+
+.import-instructions-right {
+	margin-left: 2em;
+	padding-right: 4em;
+}
+
+.import-examples {
+	font-size: 0.8em;
+	margin: 0;
+}
+
+.locate-tool-input {
+	margin-right: 0.2rem;
+}
+
+.locate-tool {
+	margin-right: 2rem;
+}
+
+.autoscroll-checkbox {
+	margin-left: 1rem;
+}

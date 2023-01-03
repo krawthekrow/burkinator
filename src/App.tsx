@@ -24,15 +24,142 @@ import ObjsEditorView from './ObjsEditorView';
 import LatLngLiteral = google.maps.LatLngLiteral;
 
 const APP_VERSION = '0.1';
+const GEOCODING_THROTTLE = 1000; // milliseconds
+const GEOCODING_MAX_NUM_TRIES = 3;
+
+const geocoderCache: { [ address: string ]: LatLngLiteral } = {};
+
+const doGeocode = (
+	geocoder: google.maps.Geocoder,
+	address: string,
+	onPos: (pos: LatLngLiteral) => void,
+	onErr: (errMsg: string) => void
+): void => {
+	const cachedPos = geocoderCache[address];
+	if (cachedPos != undefined) {
+		onPos(cachedPos);
+		return;
+	}
+	const registerPos = (pos: LatLngLiteral) => {
+		geocoderCache[address] = pos;
+		onPos(pos);
+	};
+	let numTries = 0;
+	const tryGeocode = () => {
+		if (numTries >= GEOCODING_MAX_NUM_TRIES) {
+			onErr('The google maps geocoder api traffic is too high. Please get your own API key.');
+			return;
+		}
+		geocoder.geocode({ 'address': address }, (results, gStatus) => {
+			switch (gStatus) {
+				case 'OK': {
+					const result = results[0];
+					if (result == undefined) {
+						throw new Error('status ok should have at least one result');
+					}
+					registerPos(result.geometry.location.toJSON());
+					break;
+				}
+				case 'ZERO_RESULTS': {
+					onErr('google maps geocoder: no results');
+					break;
+				}
+				case 'OVER_QUERY_LIMIT': {
+					numTries++;
+					setTimeout(
+						tryGeocode,
+						GEOCODING_THROTTLE * Math.pow(2, numTries)
+					);
+					tryGeocode();
+					break;
+				}
+				case 'REQUEST_DENIED': {
+					if (import.meta.env.MODE == 'development') {
+						registerPos({ lat: 0, lng: 0 });
+					}
+					else {
+						onErr('google maps geocoder: request denied');
+					}
+					break;
+				}
+				default: {
+					onErr('google maps geocoder: unknown error');
+				}
+			}
+		});
+	};
+	tryGeocode();
+};
+
+const LocateTool = (
+	{ geocoder, onUpdate, onErr }: {
+		geocoder: google.maps.Geocoder,
+		onUpdate: (upd: StateUpd) => void,
+		onErr: (errMsg: string) => void,
+	}
+): JSX.Element => {
+	const [query, setQuery] = useState('');
+
+	const handleQueryChange = (
+		e: React.ChangeEvent<HTMLInputElement>
+	): void => {
+		setQuery(e.target.value);
+	};
+
+	const doLocate = (
+	): void => {
+		doGeocode(geocoder, query.trim(), (pos: LatLngLiteral) => {
+			onUpdate({
+				t: 'newPoint',
+				pos: pos,
+			});
+		}, onErr);
+		setQuery('');
+	};
+
+	const handleLocateClick = (): void => {
+		doLocate();
+	};
+
+	const handleKeyDown = (
+		e: React.KeyboardEvent<HTMLInputElement>
+	) => {
+		if (e.key == 'Enter') {
+			doLocate();
+		}
+	};
+
+	return <span className="locate-tool">
+		<input
+			type="text"
+			className="locate-tool-input"
+			value={query}
+			onChange={handleQueryChange}
+			onKeyDown={handleKeyDown}
+		/>
+		<button
+			disabled={query.trim() == ''}
+			onClick={handleLocateClick}
+		>
+			Add Point
+		</button>
+	</span>;
+};
 
 const Toolbar = (
-	{appState, onUpdate, onUndo, onRedo, onMore, onCancel}: {
+	{
+		appState, onUpdate, onErr,
+		onUndo, onRedo, onMore, onCancel,
+		onChangeAutoscroll,
+	}: {
 		appState: AppState,
 		onUpdate: (upd: StateUpd) => void,
+		onErr: (errMsg: string) => void,
 		onUndo: () => void,
 		onRedo: () => void,
 		onMore: () => void,
 		onCancel: () => void,
+		onChangeAutoscroll: (newVal: boolean) => void,
 	}
 ): JSX.Element => {
 	const userState = appState.userState;
@@ -68,6 +195,13 @@ const Toolbar = (
 	</button> : null;
 
 	return <>
+		{ (appState.geocoder == null) ? null :
+			<LocateTool
+				geocoder={appState.geocoder}
+				onUpdate={onUpdate}
+				onErr={onErr}
+			/>
+		}
 		<button
 			className="toolbar-button"
 			disabled={userState.t != 'free'}
@@ -94,6 +228,12 @@ const Toolbar = (
 			onClick={onMore}
 		>More...</button>
 		{ cancelButtonDom }
+		<ReactiveCheckbox
+			val={appState.settings.autoscroll}
+			disabled={false}
+			className={'autoscroll-checkbox'}
+			onChange={onChangeAutoscroll}
+		/> Autoscroll
 	</>;
 };
 
@@ -134,253 +274,347 @@ const stringifyGeomObjs = (geomObjs: GeomObjSpec[]): string => {
 		}).join('\n');
 };
 
-const parseGeomObjs = (appState: AppState, spec: string): [
-	string | null, GeomObjSpec[] | null
-] => {
-	const lines = spec.split('\n');
+type ImportState = {
+	linesRemaining: string[];
+	lineNum: number;
+	importedObjs: GeomObjSpec[];
+	pendingGeocoderJobs: string[];
+	errMsg: string;
+}
+
+// performs one step of parsing and returns whether it's done
+const parseGeomObjStep = (
+	appState: AppState,
+	importState: ImportState,
+	// only non-null during geocode dry run
+	onGeocodeDone: ((importState: ImportState) => void) | null,
+	onGeocodeStatusChange: ((msg: string) => void) | null
+): boolean => {
+	const isGeocodingRun = onGeocodeDone != null;
+	const line = importState.linesRemaining.shift();
+	importState.lineNum++;
+
+	const genUniqNameIfNotGeocoding = (genPrefix: string): GeomObjName => {
+		if (isGeocodingRun) {
+			return newGeomObjName(genPrefix);
+		}
+		return genUniqName(appState, genPrefix);
+	}
+
+	if (line == undefined) {
+		return true;
+	}
+
+	const setLineErr = (
+		errMsg: string, nextAppState: AppState = appState
+	): void => {
+		importState.errMsg = `line ${importState.lineNum}: ${errMsg}`;
+	};
+
+	const params = line.trim().split('\t');
+
+	const kindEncoded = params.shift();
+	if (kindEncoded == undefined || kindEncoded == '') {
+		return false;
+	}
+
+	let uniqName = '';
+	// return true if it encounters a parse error
+	const parseUniqName = (genPrefix: string): boolean =>  {
+		const uniqNameVal = params.shift();
+		if (uniqNameVal == undefined) {
+			setLineErr('name missing');
+			return true;
+		}
+		uniqName = uniqNameVal;
+		const uniqNameErr = validateUniqName(uniqName);
+		if (uniqNameErr) {
+			setLineErr(uniqNameErr);
+			return true;
+		}
+
+		if (uniqName == '$') {
+			uniqName = genUniqNameIfNotGeocoding(genPrefix);
+		}
+		return false;
+	};
+
+	let pos = { lat: 0, lng: 0 };
+	// return true if it encounters a parse error
+	const parseLocation = (): boolean => {
+		const param1 = params.shift();
+		if (param1 == undefined) {
+			setLineErr(`no location provided`);
+			return true;
+		}
+
+		const param1Num = Number(param1);
+		if (!isNaN(param1Num)) {
+			pos.lat = param1Num;
+
+			const lngVal = params.shift();
+			if (lngVal == undefined) {
+				setLineErr(`no lng provided`);
+				return true;
+			}
+			pos.lng = Number(lngVal);
+			if (isNaN(pos.lng)) {
+				setLineErr(`unable to parse lng "${lngVal}"`);
+				return true;
+			}
+			
+			return false;
+		}
+
+		// if first param is not a number, then geocode it
+		const query = param1.trim();
+		if (query == '') {
+			throw new Error('empty strings should be treated as a lat');
+		}
+		const cachedPos = geocoderCache[query];
+		if (isGeocodingRun) {
+			if (cachedPos == undefined) {
+				const geocoder = appState.geocoder;
+				if (geocoder == null) {
+					setLineErr('google maps geocoder not loaded');
+					return true;
+				}
+				const isFirstQuery = importState.pendingGeocoderJobs.length == 0;
+				importState.pendingGeocoderJobs.push(query);
+				if (isFirstQuery) {
+					const doOneGeocode = () => {
+						const nextQuery = importState.pendingGeocoderJobs.shift();
+						if (nextQuery == undefined) {
+							onGeocodeDone(importState);
+							return;
+						}
+						if (geocoderCache[nextQuery]) {
+							// fast path in case we already did it along the way
+							doOneGeocode();
+							return;
+						}
+						if (onGeocodeStatusChange == null) {
+							throw new Error('onGeocodeStatusChange should be set during the geocoding run');
+						}
+						onGeocodeStatusChange(`geocoding "${nextQuery.trim()}"...`);
+						doGeocode(
+							geocoder,
+							nextQuery.trim(),
+							(pos) => {
+								setTimeout(doOneGeocode, GEOCODING_THROTTLE);
+							},
+							(errMsg) => {
+								setLineErr(errMsg);
+								onGeocodeDone(importState);
+							}
+						);
+					};
+					setTimeout(doOneGeocode, 0);
+				}
+			}
+			return false;
+		}
+
+		if (cachedPos == undefined) {
+			throw new Error('should not try to parse if not fully geocoded');
+		}
+		pos = cachedPos;
+		return false;
+	};
+
+	// return true if it encounters a parse error
+	const parsePoint = (): boolean => {
+		const param1 = params[0];
+		if (param1 == undefined) {
+			setLineErr(`missing point params`);
+			return true;
+		}
+		if (isNaN(Number(param1))) {
+			if (parseUniqName('p')) {
+				return true;
+			}
+		}
+		else {
+			uniqName = genUniqNameIfNotGeocoding('p');
+		}
+
+		if (parseLocation()) {
+			return true;
+		}
+
+		let mapLabel = params.shift();
+		if (mapLabel == undefined) {
+			mapLabel = '';
+		}
+
+		if (params.length > 0) {
+			setLineErr(`too many params`);
+			return true;
+		}
+
+		importState.importedObjs.push({
+			t: 'point',
+			uniqName: newGeomObjName(uniqName),
+			pos: pos,
+			mapLabel: mapLabel,
+		});
+		return false;
+	};
+
+	switch (kindEncoded) {
+		case 'P': {
+			return parsePoint();
+		}
+		case 'G': {
+			if (parseUniqName('g')) {
+				return true;
+			}
+
+			let ptStart = params.shift();
+			if (ptStart == undefined) {
+				setLineErr('start point missing');
+				return true;
+			}
+			if (ptStart == '$') {
+				ptStart = '';
+			}
+
+			let ptEnd = params.shift();
+			if (ptEnd == undefined) {
+				setLineErr('end point missing');
+				return true;
+			}
+			if (ptEnd == '$') {
+				ptStart = '';
+			}
+
+			const useFarArcVal = params.shift();
+			let useFarArc = false;
+			if (useFarArcVal != undefined) {
+				switch (useFarArcVal) {
+					case 'near': {
+						useFarArc = false;
+						break;
+					}
+					case 'far': {
+						useFarArc = true;
+						break;
+					}
+					default: {
+						setLineErr(
+							`invalid bool (useFarArc) "${useFarArcVal}"`
+						);
+						return true;
+					}
+				}
+			}
+
+			let destPtTurnAngle: number | undefined = 0;
+			let destPtDist: number | undefined = 0;
+			let destPtMapLabel: string | undefined = '';
+			let destPtEnabled = false;
+
+			const destPtTurnAngleVal = params.shift();
+			if (destPtTurnAngleVal != undefined) {
+				destPtEnabled = true;
+				destPtTurnAngle = Number(destPtTurnAngleVal);
+				if (isNaN(destPtTurnAngle)) {
+					setLineErr(
+						`unable to parse dest pt turn angle "${destPtTurnAngle}"`
+					);
+					return true;
+				}
+
+				const destPtDistVal = params.shift();
+				if (destPtDistVal == undefined) {
+					setLineErr(`no dest pt distance provided`);
+					return true;
+				}
+				destPtDist = Number(destPtDistVal);
+				if (isNaN(destPtDist)) {
+					setLineErr(
+						`unable to parse dest pt distance "${destPtDistVal}"`
+					);
+					return true;
+				}
+
+				destPtMapLabel = params.shift();
+				if (destPtMapLabel == undefined) {
+					destPtMapLabel = '';
+				}
+			}
+
+			if (params.length > 0) {
+				setLineErr(`too many params`);
+				return true;
+			}
+
+			importState.importedObjs.push({
+				t: 'geodesic',
+				uniqName: newGeomObjName(uniqName),
+				ptStart: newGeomObjName(ptStart),
+				ptEnd: newGeomObjName(ptEnd),
+				useFarArc: useFarArc,
+				destPtEnabled: destPtEnabled,
+				destPtTurnAngle: destPtTurnAngle,
+				destPtDist: destPtDist,
+				destPtMapLabel: destPtMapLabel,
+			});
+			return false;
+		}
+		default: {
+			// put the first param back
+			params.splice(0, 0, kindEncoded);
+			return parsePoint();
+		}
+	}
+};
+
+const parseGeomObjs = (
+	appState: AppState,
+	spec: string,
+	// only non-null during geocode dry run
+	onGeocodeDone: ((importState: ImportState) => void) | null,
+	onGeocodeStatusChange: ((msg: string) => void) | null
+): ImportState => {
+	const importState = {
+		linesRemaining: spec.split('\n'),
+		lineNum: 0,
+		importedObjs: [],
+		pendingGeocoderJobs: [],
+		errMsg: '',
+	};
+
 	let versionLine = undefined;
-	let lineNum = 0;
 	while (versionLine == undefined || versionLine.trim() == '') {
-		versionLine = lines.shift();
-		lineNum++;
+		versionLine = importState.linesRemaining.shift();
+		importState.lineNum++;
 	}
 	if (versionLine == undefined) {
-		return ['version line missing', null];
+		importState.errMsg = 'version line missing';
+		return importState;
 	}
 	if (versionLine[0] == 'v') {
 		if (versionLine != `v${APP_VERSION}`) {
-			return [`wrong version; current version is ${APP_VERSION}`, null];
+			importState.errMsg =
+				`wrong version; current version is ${APP_VERSION}`;
+			return importState;
 		}
 	}
 	else {
 		// put the line back; assume version line was omitted
-		lines.splice(0, 0, versionLine);
+		importState.linesRemaining.splice(0, 0, versionLine);
+		importState.lineNum--;
 	}
 
-	const makeErrRet = (errMsg: string): [
-		string, null
-	] => {
-		return [`line ${lineNum}: ${errMsg}`, null];
-	};
-
-	const geomObjs: GeomObjSpec[] = [];
-	while (true) {
-		const line = lines.shift();
-		lineNum++;
-
-		if (line == undefined) {
-			break;
-		}
-
-		const params = line.trim().split('\t');
-
-		const kindEncoded = params.shift();
-		if (kindEncoded == undefined || kindEncoded == '') {
-			continue;
-		}
-
-		let uniqName = params.shift();
-		if (uniqName == undefined) {
-			return makeErrRet('name missing');
-		}
-		if (uniqName == '$') {
-			uniqName = genUniqName(appState);
-		}
-		const uniqNameErr = validateUniqName(uniqName);
-		if (uniqNameErr) {
-			return makeErrRet(uniqNameErr);
-		}
-
-		switch (kindEncoded) {
-			case 'P': {
-				const latVal = params.shift();
-				if (latVal == undefined) {
-					return makeErrRet(`no lat provided`);
-				}
-				const lat = Number(latVal);
-				if (isNaN(lat)) {
-					return makeErrRet(`unable to parse lat "${latVal}"`);
-				}
-
-				const lngVal = params.shift();
-				if (lngVal == undefined) {
-					return makeErrRet(`no lng provided`);
-				}
-				const lng = Number(lngVal);
-				if (isNaN(lng)) {
-					return makeErrRet(`unable to parse lng "${lngVal}"`);
-				}
-
-				let mapLabel = params.shift();
-				if (mapLabel == undefined) {
-					mapLabel = '';
-				}
-
-				if (params.length > 0) {
-					return makeErrRet(`too many params`);
-				}
-
-				geomObjs.push({
-					t: 'point',
-					uniqName: newGeomObjName(uniqName),
-					pos: { lat: lat, lng: lng },
-					mapLabel: mapLabel,
-				});
-				break;
-			}
-			case 'G': {
-				let ptStart = params.shift();
-				if (ptStart == undefined) {
-					return makeErrRet('start point missing');
-				}
-				if (ptStart == '$') {
-					ptStart = '';
-				}
-
-				let ptEnd = params.shift();
-				if (ptEnd == undefined) {
-					return makeErrRet('end point missing');
-				}
-				if (ptEnd == '$') {
-					ptStart = '';
-				}
-
-				const useFarArcVal = params.shift();
-				let useFarArc = false;
-				if (useFarArcVal != undefined) {
-					switch (useFarArcVal) {
-						case 'near': {
-							useFarArc = false;
-							break;
-						}
-						case 'far': {
-							useFarArc = true;
-							break;
-						}
-						default: {
-							return makeErrRet(
-								`invalid bool (useFarArc) "${useFarArcVal}"`
-							);
-						}
-					}
-				}
-
-				let destPtTurnAngle: number | undefined = 0;
-				let destPtDist: number | undefined = 0;
-				let destPtMapLabel: string | undefined = '';
-				let destPtEnabled = false;
-
-				const destPtTurnAngleVal = params.shift();
-				if (destPtTurnAngleVal != undefined) {
-					destPtEnabled = true;
-					destPtTurnAngle = Number(destPtTurnAngleVal);
-					if (isNaN(destPtTurnAngle)) {
-						return makeErrRet(
-							`unable to parse dest pt turn angle "${destPtTurnAngle}"`
-						);
-					}
-
-					const destPtDistVal = params.shift();
-					if (destPtDistVal == undefined) {
-						return makeErrRet(`no dest pt distance provided`);
-					}
-					destPtDist = Number(destPtDistVal);
-					if (isNaN(destPtDist)) {
-						return makeErrRet(
-							`unable to parse dest pt distance "${destPtDistVal}"`
-						);
-					}
-
-					destPtMapLabel = params.shift();
-					if (destPtMapLabel == undefined) {
-						destPtMapLabel = '';
-					}
-				}
-
-				if (params.length > 0) {
-					return makeErrRet(`too many params`);
-				}
-
-				geomObjs.push({
-					t: 'geodesic',
-					uniqName: newGeomObjName(uniqName),
-					ptStart: newGeomObjName(ptStart),
-					ptEnd: newGeomObjName(ptEnd),
-					useFarArc: useFarArc,
-					destPtEnabled: destPtEnabled,
-					destPtTurnAngle: destPtTurnAngle,
-					destPtDist: destPtDist,
-					destPtMapLabel: destPtMapLabel,
-				});
-				break;
-			}
-			default: {
-				// assume it's a point
-				const param1 = kindEncoded;
-				const param2 = uniqName;
-				const param3 = params.shift();
-				const param4 = params.shift();
-				let lat: number;
-				let lng: number;
-				let latVal: string;
-				let lngVal: string;
-				let mapLabel: string;
-
-				if (params.length > 0) {
-					return makeErrRet(`too many params (raw point)`);
-				}
-
-				if (
-					param3 == undefined || (
-						!isNaN(Number(param1)) &&
-						isNaN(Number(param3))
-					)
-				) {
-					// assume no uniqName provided
-					uniqName = genUniqName(appState);
-					latVal = param1;
-					lngVal = param2;
-					mapLabel = (param3 == undefined) ? '' : param3;
-				}
-				else {
-					if (param3 == undefined) {
-						return makeErrRet(`no lng provided`);
-					}
-
-					uniqName = param1;
-					latVal = param2;
-					lngVal = param3;
-					mapLabel = (param4 == undefined) ? '' : param4;
-
-					if (uniqName == '$') {
-						uniqName = genUniqName(appState);
-					}
-				}
-
-				lat = Number(latVal);
-				lng = Number(lngVal);
-				if (isNaN(lat)) {
-					return makeErrRet(`unable to parse lat "${latVal}"`);
-				}
-				if (isNaN(lng)) {
-					return makeErrRet(`unable to parse lng "${lngVal}"`);
-				}
-
-				const newUniqNameErr = validateUniqName(uniqName);
-				if (newUniqNameErr) {
-					return makeErrRet(newUniqNameErr);
-				}
-
-				geomObjs.push({
-					t: 'point',
-					uniqName: newGeomObjName(uniqName),
-					pos: { lat: lat, lng: lng },
-					mapLabel: mapLabel,
-				});
-			}
-		}
+	while (!parseGeomObjStep(
+		appState, importState, onGeocodeDone, onGeocodeStatusChange
+	)) {
 	}
-	return [null, geomObjs];
+	if (onGeocodeDone && importState.pendingGeocoderJobs.length == 0) {
+		onGeocodeDone(importState);
+	}
+	return importState;
 };
 
 const saveState = (geomObjs: GeomObjSpec[]): void => {
@@ -391,38 +625,17 @@ const saveState = (geomObjs: GeomObjSpec[]): void => {
 	catch { }
 };
 
-const loadState = (appState: AppState): GeomObjSpec[] => {
-	let importStrRaw: string | null = null;
-	let importStr: string = '';
+const getLoadStr = (): string => {
+	let loadStrRaw: string | null = null;
 
 	try {
-		importStrRaw = localStorage.getItem('__burkinator_state');
+		loadStrRaw = localStorage.getItem('__burkinator_state');
 	} catch { }
-	if (importStrRaw == null) {
+	if (loadStrRaw == null) {
 		// no saved state; use initial sample data
-		importStr = 'v0.1\nP\tobj5\t11.725384459061823\t-2.0012229261396275\tH\nP\tobj6\t-32.916978560354714\t-55.937791024638614\tI\nG\tobj4\tobj5\tobj6\tnear\nP\tobj8\t45.75979893594823\t25.04040783555398\tP\nG\tobj7\tobj6\tobj8\tnear\nP\tobj10\t1.8429791650053304\t-157.3915042181933\tU\nG\tobj9\tobj8\tobj10\tnear\nP\tobj12\t32.93790942634668\t42.66835104582444\tZ\nG\tobj11\tobj10\tobj12\tnear\nP\tobj14\t17.584579687927402\t10.060929170824439\tZ\nG\tobj13\tobj12\tobj14\tnear\nP\tobj16\t-12.186232267617358\t17.97108542082444\tL\nG\tobj15\tobj14\tobj16\tnear\nP\tobj18\t-7.07556349812708\t35.10975729582444\tE\nG\tobj17\tobj16\tobj18\tnear\nP\tobj20\t19.702166441496587\t55.91172922600376\tR\nG\tobj19\tobj18\tobj20\tnear\nP\tobj22\t-1.8841461608329453\t29.84568563177587\tS\nG\tobj21\tobj20\tobj22\tnear';
+		return 'v0.1\nP\tobj5\t11.725384459061823\t-2.0012229261396275\tH\nP\tobj6\t-32.916978560354714\t-55.937791024638614\tI\nG\tobj4\tobj5\tobj6\tnear\nP\tobj8\t45.75979893594823\t25.04040783555398\tP\nG\tobj7\tobj6\tobj8\tnear\nP\tobj10\t1.8429791650053304\t-157.3915042181933\tU\nG\tobj9\tobj8\tobj10\tnear\nP\tobj12\t32.93790942634668\t42.66835104582444\tZ\nG\tobj11\tobj10\tobj12\tnear\nP\tobj14\t17.584579687927402\t10.060929170824439\tZ\nG\tobj13\tobj12\tobj14\tnear\nP\tobj16\t-12.186232267617358\t17.97108542082444\tL\nG\tobj15\tobj14\tobj16\tnear\nP\tobj18\t-7.07556349812708\t35.10975729582444\tE\nG\tobj17\tobj16\tobj18\tnear\nP\tobj20\t19.702166441496587\t55.91172922600376\tR\nG\tobj19\tobj18\tobj20\tnear\nP\tobj22\t-1.8841461608329453\t29.84568563177587\tS\nG\tobj21\tobj20\tobj22\tnear';
 	}
-	else {
-		importStr = JSON.parse(importStrRaw);
-	}
-
-	const [importErr, geomObjs] = parseGeomObjs(appState, importStr);
-	if (importErr) {
-		console.error(importErr);
-		console.error(importStr);
-		try {
-			localStorage.setItem(
-				'__burkinator_err_state',
-				JSON.stringify(importStr)
-			);
-		}
-		catch { }
-		return [];
-	}
-	if (geomObjs == null) {
-		throw new Error('geomObjs should exist if no error');
-	}
-	return geomObjs;
+	return JSON.parse(loadStrRaw);
 };
 
 const MoreFeaturesModal = (
@@ -434,6 +647,9 @@ const MoreFeaturesModal = (
 ): JSX.Element | null => {
 	const apiKeyRef = useRef<HTMLInputElement>(null);
 	const [exportText, setExportText] = useState('');
+	const isInterfaceDisabled =
+		appState.userState.t == 'more' &&
+		appState.userState.isImporting;
 
 	useEffect(() => {
 		if (appState.userState.t == 'more') {
@@ -475,6 +691,12 @@ const MoreFeaturesModal = (
 	>
 		Error: { importErr }
 	</div>;
+	const importInfo = appState.userState.importInfo;
+	const importInfoDom = (importInfo == '') ? null : <div
+		className="import-info"
+	>
+		{ importInfo }
+	</div>;
 
 	return <div className="modal">
 		<div className="modal-pane">
@@ -487,41 +709,62 @@ const MoreFeaturesModal = (
 						type="text"
 						className="api-key-input"
 						defaultValue={appState.apiKey}
+						disabled={isInterfaceDisabled}
 						ref={apiKeyRef}
 					/>
 				</div>
 				<div className="api-key-cell-label">
 					<button
 						onClick={handleCommitApiKey}
+						disabled={isInterfaceDisabled}
 					>
 						Set API key
 					</button>
 				</div>
 			</div>
-			<div>
-				<h3>Import/Export</h3>
-				<p>Note: You can also import points just by specifying, for each point, a latitude, longitude, and optionally a label.</p>
+			<div className="import-instructions">
+				<div className="import-instructions-left">
+					<h3>Import/Export</h3>
+					<p>Fields must be tab-separated. For points, you may import the first and second parameters (kind and object name). The last parameter (map label) is also optional.</p>
+					<p>Instead of lat/lng, you can also specify a place name to be geocoded. If you do so, you <i>must</i> specify an object name. If you envision yourself geocoding &gt;20 or so locations, I would appreciate if you'd <a href="https://developers.google.com/maps/documentation/javascript/get-api-key">get your own API key</a>.</p>
+				</div>
+				<div className="import-instructions-right">
+					<h3>Point examples</h3>
+					<pre className="import-examples">
+						{ (
+							'12.24\t-1.56\tP0\n' +
+							'p1\t12.24\t-1.56\tP1\n' +
+							'p2\tBurkina Faso\n' +
+							'p3\tBurkina Faso\tP3\n'
+						).trim() }
+					</pre>
+				</div>
 			</div>
 			<div>
 				<textarea
 					className="export-textarea"
 					value={exportText}
+					disabled={isInterfaceDisabled}
 					onChange={handleChangeExportText}
 				/>
 			</div>
+			{ importInfoDom }
 			{ importErrDom }
 			<div className="modal-buttons-pane">
 				<button
 					className="export-button"
+					disabled={isInterfaceDisabled}
 					onClick={handleImport}
 				>Import</button>
 				<button
 					className="export-button"
+					disabled={isInterfaceDisabled}
 					onClick={handleExport}
 				>Export</button>
 				<div className="modal-done-button-cell">
 					<button
 						className="export-button modal-done-button"
+						disabled={isInterfaceDisabled}
 						onClick={onDone}
 					>Done</button>
 				</div>
@@ -547,7 +790,8 @@ const App = (): JSX.Element => {
 		const initAppState: AppState = {
 			apiKey: apiKey,
 			earth: initEarth,
-			userState: { t: 'free' },
+			geocoder: null,
+			userState: { t: 'loading' },
 			updHistory: [],
 			updHistoryIndex: 0,
 			updHistoryAcceptMerge: false,
@@ -559,18 +803,74 @@ const App = (): JSX.Element => {
 			lastUsedId: 0,
 			mapCenter: {lat: 0, lng: 0},
 			mapZoom: 1,
+			settings: {
+				autoscroll: true,
+			},
 			errMsg: null,
 		};
-		const loadedObjs = loadState(initAppState);
-		if (loadedObjs.length > 0) {
-			initAppState.geomObjs = loadedObjs;
-			initAppState.mapObjs = geomObjsToMapObjs(initEarth, loadedObjs);
-		}
 		return initAppState;
 	});
 
+	useEffect(() => {
+		if (appState.userState.t != 'loading') {
+			return;
+		}
+
+		const loadStr = getLoadStr();
+		const handleError = (errMsg: string) => {
+			console.error(errMsg);
+			console.error(loadStr);
+			try {
+				localStorage.setItem(
+					'__burkinator_err_state',
+					JSON.stringify(loadStr)
+				);
+			}
+			catch { }
+		};
+
+		parseGeomObjs(appState, loadStr, (dryRunImportState) => {
+			let errMsg = dryRunImportState.errMsg;
+			setAppState((draftAppState) => {
+				if (errMsg == '') {
+					const importState = parseGeomObjs(
+						draftAppState, loadStr, null, null
+					);
+					errMsg = importState.errMsg;
+					if (errMsg == '') {
+						if (importState.importedObjs.length > 0) {
+							draftAppState.geomObjs = importState.importedObjs;
+							AppStateReducer.syncObjs(draftAppState);
+						}
+					}
+				}
+
+				if (errMsg != '') {
+					handleErr(errMsg);
+				}
+
+				draftAppState.userState = {
+					t: 'free',
+				};
+			});
+		}, (msg) => {
+			handleErr('saved state should not require geocoding');
+			setAppState((draftAppState) => {
+				draftAppState.userState = {
+					t: 'free',
+				};
+			});
+		});
+	}, [appState.userState.t]);
+
 	const renderErr = (status: Status) => {
 		return <h2>{status}</h2>;
+	};
+
+	const handleMapLoad = () => {
+		setAppState((draftAppState) => {
+			draftAppState.geocoder = new google.maps.Geocoder();
+		});
 	};
 
 	const handleMapParamsChange = (center: LatLngLiteral, zoom: number) => {
@@ -593,7 +893,7 @@ const App = (): JSX.Element => {
 					break;
 				}
 				case 'geodesicStart': {
-					const newPtName = genUniqName(draftAppState);
+					const newPtName = genUniqName(draftAppState, 'p');
 					AppStateReducer.applyUpd(draftAppState, {
 						t: 'newPoint',
 						uniqName: newPtName,
@@ -608,7 +908,7 @@ const App = (): JSX.Element => {
 					break;
 				}
 				case 'geodesicEnd': {
-					const newPtName = genUniqName(draftAppState);
+					const newPtName = genUniqName(draftAppState, 'p');
 					AppStateReducer.applyUpd(draftAppState, {
 						t: 'newPoint',
 						uniqName: newPtName,
@@ -622,6 +922,7 @@ const App = (): JSX.Element => {
 					});
 					break;
 				}
+				case 'loading':
 				case 'more': {
 					break;
 				}
@@ -715,6 +1016,15 @@ const App = (): JSX.Element => {
 		});
 	};
 
+	const handleErr = (
+		errMsg: string
+	) => {
+		setAppState((draftAppState) => {
+			AppStateReducer.startNewAction(draftAppState);
+			draftAppState.errMsg = errMsg;
+		});
+	};
+
 	const handleUserStateUpdate = (
 		newState: UserState
 	) => {
@@ -746,6 +1056,8 @@ const App = (): JSX.Element => {
 			draftAppState.userState = {
 				t: 'more',
 				importErr: '',
+				importInfo: '',
+				isImporting: false,
 			};
 			saveState(draftAppState.geomObjs);
 		});
@@ -762,6 +1074,7 @@ const App = (): JSX.Element => {
 					};
 					break;
 				}
+				case 'loading':
 				case 'free':
 				case 'more': {
 					throw new Error('nothing to cancel');
@@ -770,6 +1083,12 @@ const App = (): JSX.Element => {
 					assertUnhandledType(draftAppState.userState);
 				}
 			}
+		});
+	};
+
+	const handleChangeAutoscroll = (newVal: boolean) => {
+		setAppState((draftAppState) => {
+			draftAppState.settings.autoscroll = newVal;
 		});
 	};
 
@@ -787,22 +1106,47 @@ const App = (): JSX.Element => {
 			if (draftAppState.userState.t != 'more') {
 				throw new Error('user should have more modal open');
 			}
-			const [importErr, newObjs] = parseGeomObjs(
-				draftAppState, importStr
-			);
-			if (importErr == null) {
-				if (newObjs == null) {
-					throw new Error('newObjs should not be null if no error');
+			draftAppState.userState.importInfo = 'Importing...';
+			draftAppState.userState.isImporting = true;
+		});
+		parseGeomObjs(appState, importStr, (dryRunImportState) => {
+			let errMsg = dryRunImportState.errMsg;
+			setAppState((draftAppState) => {
+				if (draftAppState.userState.t != 'more') {
+					throw new Error('user should have more modal open');
 				}
-				AppStateReducer.applyMerge(
-					draftAppState, newObjs
-				);
-				draftAppState.userState.importErr = '';
-			}
-			else {
-				draftAppState.userState.importErr = importErr;
-			}
-			saveState(draftAppState.geomObjs);
+				if (errMsg == '') {
+					const importState = parseGeomObjs(
+						draftAppState, importStr, null, null
+					);
+					errMsg = importState.errMsg;
+					if (errMsg == '') {
+						AppStateReducer.applyMerge(
+							draftAppState, importState.importedObjs
+						);
+						draftAppState.userState.importErr = '';
+						draftAppState.userState.importInfo = 'Import success!';
+						draftAppState.userState.isImporting = false;
+						saveState(draftAppState.geomObjs);
+					}
+				}
+
+				if (errMsg != '') {
+					if (draftAppState.userState.t != 'more') {
+						throw new Error('user should have more modal open');
+					}
+					draftAppState.userState.importErr = errMsg;
+					draftAppState.userState.importInfo = '';
+					draftAppState.userState.isImporting = false;
+				}
+			});
+		}, (msg) => {
+			setAppState((draftAppState) => {
+				if (draftAppState.userState.t != 'more') {
+					throw new Error('user should have more modal open');
+				}
+				draftAppState.userState.importInfo = msg;
+			});
 		});
 	};
 
@@ -822,6 +1166,7 @@ const App = (): JSX.Element => {
 			instructionMsg = 'select ending point';
 			break;
 		}
+		case 'loading':
 		case 'free':
 		case 'more': {
 			break;
@@ -856,10 +1201,12 @@ const App = (): JSX.Element => {
 				<Toolbar
 					appState={appState}
 					onUpdate={handleUpdate}
+					onErr={handleErr}
 					onUndo={handleUndo}
 					onRedo={handleRedo}
 					onMore={handleMore}
 					onCancel={handleCancel}
+					onChangeAutoscroll={handleChangeAutoscroll}
 				/>
 			</div>
 			<div className="main-pane">
@@ -869,6 +1216,7 @@ const App = (): JSX.Element => {
 						center={appState.mapCenter}
 						zoom={appState.mapZoom}
 						markersDraggable={appState.userState.t == 'free'}
+						onMapLoad={handleMapLoad}
 						onMapParamsChange={handleMapParamsChange}
 						onMapClick={handleMapClick}
 						onMarkerDrag={handleMarkerDrag}

@@ -17,9 +17,14 @@ import {
 
 import LatLngLiteral = google.maps.LatLngLiteral;
 
+type AppSettings = {
+	autoscroll: boolean;
+};
+
 type AppState = {
 	apiKey: string;
 	earth: EarthModel;
+	geocoder: google.maps.Geocoder | null;
 	userState: UserState;
 	updHistory: UndoableUpd[];
 	updHistoryIndex: number;
@@ -31,6 +36,7 @@ type AppState = {
 	lastUsedId: number;
 	mapCenter: LatLngLiteral;
 	mapZoom: number;
+	settings: AppSettings;
 	errMsg: string | null;
 };
 
@@ -447,8 +453,8 @@ const renameRefs = (
 	}
 };
 
-const genUniqName = (appState: AppState): GeomObjName => {
-	let uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
+const genUniqName = (appState: AppState, prefix: string): GeomObjName => {
+	let uniqName = newGeomObjName(`${prefix}${appState.lastUsedId}`);
 	appState.lastUsedId++;
 	const conflictIndex = appState.geomObjs.findIndex((geomObj) => {
 		return geomObj.uniqName == uniqName;
@@ -459,7 +465,7 @@ const genUniqName = (appState: AppState): GeomObjName => {
 			geomObjsMap[geomObj.uniqName] = geomObj;
 		}
 		while (geomObjsMap[uniqName]) {
-			uniqName = newGeomObjName(`obj${appState.lastUsedId}`);
+			uniqName = newGeomObjName(`${prefix}${appState.lastUsedId}`);
 			appState.lastUsedId++;
 		}
 	}
@@ -470,6 +476,9 @@ const validateUniqName = (uniqName: string): string | null => {
 	if (uniqName.includes('$')) {
 		// "$" is used as a special character for mapObj names
 		return `name cannot contain "$"`;
+	}
+	if (uniqName == '') {
+		return `name cannot be empty`;
 	}
 	return null;
 };
@@ -506,7 +515,7 @@ const applyUpd = (
 	switch (upd.t)  {
 		case 'newPoint': {
 			const uniqName: GeomObjName = (upd.uniqName != undefined) ?
-				upd.uniqName : genUniqName(appState);
+				upd.uniqName : genUniqName(appState, 'p');
 			registerUndoableUpd({
 				...upd,
 				uniqName: uniqName,
@@ -522,7 +531,7 @@ const applyUpd = (
 		}
 		case 'newGeodesic': {
 			const uniqName = (upd.uniqName != undefined) ?
-				upd.uniqName : genUniqName(appState);
+				upd.uniqName : genUniqName(appState, 'g');
 			registerUndoableUpd({
 				...upd,
 				uniqName: uniqName,
@@ -845,6 +854,7 @@ const AppStateReducer = {
 	applyUndo: applyUndo,
 	applyRedo: applyRedo,
 	applyMerge: applyMerge,
+	syncObjs: syncObjs,
 };
 
 export type { AppState };

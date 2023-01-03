@@ -341,7 +341,18 @@ const ObjEditorView = (
 		onUserStateUpdate: (newState: UserState) => void,
 	}
 ) => {
+	const editorRef = useRef<HTMLDivElement>(null);
+
 	const isFocused = appState.focusedObj == obj.uniqName;
+
+	useEffect(() => {
+		if (
+			editorRef.current != null && isFocused &&
+			appState.settings.autoscroll
+		) {
+			editorRef.current.scrollIntoView({ block: 'nearest' });
+		}
+	}, [editorRef, isFocused, appState.geomObjs.length]);
 
 	const getInnerEditor = (): JSX.Element => {
 		switch (obj.t) {
@@ -386,6 +397,7 @@ const ObjEditorView = (
 
 	return <div
 		className={`obj-editor${isFocused ? ' focused-obj-editor' : ''}`}
+		ref={editorRef}
 		onClick={handleClick}
 	>
 		<div>

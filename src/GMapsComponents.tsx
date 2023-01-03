@@ -3,10 +3,6 @@ import React, { useRef, useState, useEffect } from 'react';
 import LatLngLiteral = google.maps.LatLngLiteral;
 import LatLng = google.maps.LatLng;
 
-const flattenLatLng = (pos: LatLng): LatLngLiteral => {
-	return { lat: pos.lat(), lng: pos.lng() };
-}
-
 const GMap = (
 	{center, zoom, onMapInit, onMapParamsChange, onClick}: {
 		center: LatLngLiteral,
@@ -28,28 +24,22 @@ const GMap = (
 	useEffect(() => {
 		if (map) {
 			const clickListener = map.addListener('click', (e) => {
-				onClick(flattenLatLng(e.latLng));
+				onClick(e.latLng.toJSON());
 			});
 
 			const updateMapParams = () => {
-				onMapParamsChange(flattenLatLng(map.getCenter()), map.getZoom());
+				onMapParamsChange(map.getCenter().toJSON(), map.getZoom());
 			};
 
-			const centerChangeListener = map.addListener(
-				'center_changed', () => {
-					updateMapParams();
-				}
-			);
-			const zoomChangeListener = map.addListener(
-				'zoom_changed', () => {
+			const idleListener = map.addListener(
+				'idle', () => {
 					updateMapParams();
 				}
 			);
 
 			return () => {
 				google.maps.event.removeListener(clickListener);
-				google.maps.event.removeListener(centerChangeListener);
-				google.maps.event.removeListener(zoomChangeListener);
+				google.maps.event.removeListener(idleListener);
 			};
 		}
 	}, [map]);
@@ -59,11 +49,11 @@ const GMap = (
 			// only set initial center and zoom since re-updating every time
 			// center/zoom changes breaks the interface
 			map.setOptions({
-				center: { lat: 0, lng: 0 },
-				zoom: 1,
+				center: center,
+				zoom: zoom,
 			});
 		}
-	}, [map]);
+	}, [map, center.lat, center.lng, zoom]);
 
 	useEffect(() => {
 		if (map) {
@@ -105,12 +95,12 @@ const Marker = (
 
 		const dragListener = marker.addListener('drag', (e) => {
 			if (onDrag) {
-				onDrag(flattenLatLng(e.latLng));
+				onDrag(e.latLng.toJSON());
 			}
 		});
 		const dragEndListener = marker.addListener('dragend', (e) => {
 			if (onDragEnd) {
-				onDragEnd(flattenLatLng(e.latLng));
+				onDragEnd(e.latLng.toJSON());
 			}
 		});
 		const clickListener = marker.addListener('click', (e) => {

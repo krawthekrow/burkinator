@@ -1,12 +1,18 @@
-import { GeomObjName } from './GeomObj';
+import { GeomObjName, GeomObjSpec } from './GeomObj';
 
 type UserStateFree = {
 	t: 'free';
 };
 
+type UserStateLoading = {
+	t: 'loading';
+};
+
 type UserStateMoreFeatures = {
 	t: 'more';
 	importErr: string;
+	importInfo: string;
+	isImporting: boolean;
 };
 
 type UserStateSelectGeodesicStart = {
@@ -27,6 +33,7 @@ type UserStateSelectPt =
 
 type UserState =
 	UserStateFree |
+	UserStateLoading |
 	UserStateSelectPt |
 	UserStateMoreFeatures
 ;
